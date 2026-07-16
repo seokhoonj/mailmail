@@ -145,7 +145,7 @@ for name in ('naver', 'gmail'):
 소유자 외에게 읽히는 상태면 `resolve_password`는 그 파일을 **쓰지 않고 거부하고**,
 `chmod 600` 명령을 알려준다 — ssh가 개인키에 대해 하는 것과 같다.
 
-## 쓰는 법
+## 사용법
 
 ```python
 from mailrun import send_mail
