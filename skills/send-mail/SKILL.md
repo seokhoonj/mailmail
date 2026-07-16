@@ -1,6 +1,6 @@
 ---
 name: send-mail
-description: 대화 중에 나온 결과·리포트·파일을 메일로 보낸다. mailrun 패키지를 호출하는 얇은 래퍼이며, 발송 전 반드시 수신자·제목·첨부를 사용자에게 확인받는다. Trigger phrases: 메일 보내줘, 메일로 보내, 메일 발송, 이거 메일로, send mail, email this, 부장님께 보내줘, 상무님께 보내줘.
+description: "대화 중에 나온 결과·리포트·파일을 메일로 보낸다. mailrun 패키지를 호출하는 얇은 래퍼이며, 발송 전 반드시 수신자·제목·첨부를 사용자에게 확인받는다. Trigger phrases: 메일 보내줘, 메일로 보내, 메일 발송, 이거 메일로, send mail, email this, 부장님께 보내줘, 상무님께 보내줘."
 ---
 
 # send-mail — 대화 결과를 메일로 보내기

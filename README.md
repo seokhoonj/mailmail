@@ -15,22 +15,7 @@ uv venv
 uv pip install -e ".[dev]"
 ```
 
-Python 3.11 이상. 런타임 의존성은 없고, `[dev]`는 pytest와 ruff만 가져온다.
-
-### Dropbox 동기화에서 venv 빼기
-
-이 저장소는 Dropbox 안에 있고 `.venv`는 50MB / 900여 파일이다. 언제든 재생성 가능한 것을
-클라우드에 올릴 이유가 없으므로, Dropbox에게 무시하라고 표시해 둔다. `.venv`는 제자리에
-그대로 두는 것이 낫다 — 에디터가 자동으로 인식하고 `uv`가 경로 없이 그냥 동작한다.
-
-```sh
-python3 -c "import os; os.setxattr('.venv', 'user.com.dropbox.ignored', b'1')"
-dropbox filestatus .venv          # -> ignored
-```
-
-**`.venv`를 지우고 다시 만들면 이 표시가 사라진다.** 확장 속성은 디렉토리에 붙는 것이라
-디렉토리와 함께 없어지고, 그러면 조용히 다시 동기화된다. 재생성했다면 위 명령을 다시 실행하고
-`dropbox filestatus`로 확인할 것.
+Python 3.11 이상. 런타임 의존성은 없고, `[dev]`는 pytest·ruff·mypy만 가져온다.
 
 ## 설정
 
@@ -68,27 +53,97 @@ account = load_config().resolve_account("naver")
 store_password(account, getpass(f"{account.username} 앱 비밀번호: "))
 ```
 
-Gmail·Naver 모두 2단계 인증이 켜진 계정은 평문 SMTP 로그인을 거부하므로, 로그인
-비밀번호가 아니라 **앱 비밀번호**를 넣어야 한다. 일회성 실행이나 컨테이너에서는
-`MAILRUN_PASSWORD` 환경변수가 파일보다 우선한다.
+일회성 실행이나 컨테이너에서는 `MAILRUN_PASSWORD` 환경변수가 파일보다 우선한다.
 
-### 왜 OS 키링이 아니라 파일인가
+### 앱 비밀번호 받기 — 여기서 대부분 막힌다
 
-`.netrc`, `.pgpass`, 클라우드 CLI의 자격증명 파일이 전부 취하는 형태이고, 그들이 그 형태를
-고른 이유와 같다: **프롬프트가 없다.** 스크립트·cron·에이전트 세션이 터미널과 똑같이 동작한다.
+**로그인 비밀번호는 두 서비스 다 거부한다.** 반드시 앱 비밀번호를 따로 발급해야 하고,
+둘의 형식이 정반대라 헷갈리기 쉽다.
 
-거래 조건은 분명히 해둔다. 이 파일은 암호화되지 않으므로 같은 머신의 **다른 사용자**로부터는
-지켜주지만, **당신 권한으로 도는 것**으로부터는 지켜주지 못한다. OS 키링은 암호화해주지만
-그건 키링이 **잠겨 있을 때만**이고, 잠긴 키링이야말로 비밀번호를 물으려 멈춰서는 그것이다.
-잠금이 풀린 키링은 당신 권한으로 도는 무엇에게든 비밀을 내주므로, 결국 키링의 암호화가
-파일 권한 이상으로 사주는 것은 거의 없으면서 프롬프트 비용만 남는다.
+| | 자릿수 | 형태 | 2단계 인증 |
+|---|---|---|---|
+| **Naver** | **12자리** | **대문자 + 숫자** | 필수 |
+| **Gmail** | **16자리** | **소문자** | 필수 |
 
-피해를 실제로 제한하는 것은 자격증명 자체의 성질이다. 여기 들어가는 것은 메일 발송으로
-용도가 한정되고 계정 비밀번호를 건드리지 않고 취소할 수 있는 **앱 비밀번호**다. 그 외의 것은
-여기 넣지 않는다.
+#### Naver
 
-파일이 소유자 외에게 읽히는 상태면 `resolve_password`는 그걸 **쓰지 않고 거부한다** —
-ssh가 개인키에 대해 하는 것과 같다. `chmod 600`으로 고치라고 알려준다.
+2025년 6월 24일부터 POP3/IMAP/SMTP 접속에 2단계 인증과 앱 비밀번호가 **필수**가 되었다.
+그 전에 만든 설정이 갑자기 안 되기 시작했다면 이것이 이유다.
+
+1. **네이버ID → 보안설정 → 2단계 인증**을 켠다. 이게 없으면 다음 단계의 메뉴가 없다.
+2. 같은 화면에서 **애플리케이션 비밀번호 → 생성하기**.
+   - **종류선택은 이름표일 뿐이다.** 아웃룩·아이폰·지메일은 그냥 흔한 예시고, 무엇을 고르든
+     발급되는 비밀번호는 같다. `직접 입력`에 `mailrun`이라고 적으면 나중에 알아보기 좋다.
+   - 12자리 대문자+숫자가 나온다. **그 화면을 벗어나면 다시 못 본다.**
+3. **메일 → 환경설정 → POP3/IMAP 설정**에서 `SMTP 사용함`을 확인한다.
+   이미 켜져 있어도 **사용 안 함 → 저장 → 사용함 → 저장**으로 한 번 껐다 켜야
+   2025-06 정책 변경이 반영된다.
+
+틀렸을 때 서버가 주는 답:
+
+```
+535 5.7.1 Username and Password not accepted ... - nsmtp
+```
+
+이건 "비밀번호가 틀렸다"와 "SMTP가 꺼져 있다"를 구분해주지 않는다. 둘 다 확인할 것.
+
+#### Gmail
+
+1. **2단계 인증을 먼저 켠다.** 켜지 않으면 앱 비밀번호 메뉴 자체가 나타나지 않는다.
+2. `myaccount.google.com/apppasswords` 에서 발급.
+3. 16자리 소문자가 **네 칸씩 띄어서** 표시된다. 공백은 있든 없든 상관없다.
+
+틀렸을 때 서버가 주는 답 — 이쪽은 친절하다:
+
+```
+534 5.7.9 Application-specific password required
+```
+
+#### 넣을 때 흔한 실수
+
+`getpass`는 입력을 화면에 보여주지 않으므로 **두 번 붙여넣어도 알 수가 없다.**
+자릿수를 확인하면서 넣는다:
+
+```sh
+.venv/bin/python -c "
+from getpass import getpass
+from mailrun import load_config, store_password
+
+account = load_config().resolve_account('naver')       # 또는 'gmail'
+password = getpass(f'{account.username} 앱 비밀번호: ').strip()
+print(f'  입력된 것: {len(password)}자')                # naver 12, gmail 16
+store_password(account, password)
+print('  저장 완료 — 다시 묻지 않는다')
+"
+```
+
+제대로 들어갔는지는 보내보지 않고도 확인할 수 있다:
+
+```sh
+.venv/bin/python -c "
+import smtplib
+from mailrun import load_config, resolve_password
+
+for name in ('naver', 'gmail'):
+    account = load_config().resolve_account(name)
+    smtp = smtplib.SMTP(account.provider.smtp_host, account.provider.smtp_port, timeout=20)
+    smtp.ehlo(); smtp.starttls(); smtp.ehlo()
+    try:
+        smtp.login(account.username, resolve_password(account))
+        print(f'  {name}: OK')
+    except smtplib.SMTPAuthenticationError as e:
+        print(f'  {name}: {e.smtp_code} {e.smtp_error.decode()[:60]}')
+    smtp.quit()
+"
+```
+
+**이 파일은 암호화되지 않는다.** `.netrc`나 `.pgpass`와 같은 형태다 — 같은 머신의 다른
+사용자로부터는 권한이 지켜주지만, 당신 권한으로 도는 것으로부터는 지켜주지 못한다. 그래서
+여기 들어가는 것은 **앱 비밀번호뿐이다**: 메일 발송으로 용도가 한정되고, 계정 비밀번호를
+건드리지 않고 취소할 수 있다. 그 외의 것은 넣지 않는다.
+
+소유자 외에게 읽히는 상태면 `resolve_password`는 그 파일을 **쓰지 않고 거부하고**,
+`chmod 600` 명령을 알려준다 — ssh가 개인키에 대해 하는 것과 같다.
 
 ## 쓰는 법
 
@@ -228,7 +283,7 @@ EHLO에서 광고하는 `SIZE`를 다시 읽어 대조한다 — 서비스가 �
 쓰려면 Claude가 찾는 자리에 심링크한다. 복사하지 않는 이유는 같다 — 사본은 갈라진다:
 
 ```sh
-ln -s ~/Dropbox/mailrun/skills/send-mail ~/.claude/skills/send-mail
+ln -s "$PWD/skills/send-mail" ~/.claude/skills/send-mail
 ```
 
 ## 테스트
