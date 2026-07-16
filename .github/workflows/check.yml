@@ -15,29 +15,31 @@ jobs:
       fail-fast: false
       matrix:
         # The floor and the current release. requires-python says >=3.11, so 3.11
-        # is the version the claim has to actually hold on.
+        # is the version that claim has to actually hold on.
         python-version: ["3.11", "3.13"]
 
     steps:
       - uses: actions/checkout@v4
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v5
-
-      - name: Set up Python ${{ matrix.python-version }}
-        run: uv python install ${{ matrix.python-version }}
+      - uses: astral-sh/setup-uv@v5
 
       - name: Install
-        run: uv pip install --system -e ".[dev]"
+        # A venv per matrix version, not `uv pip --system`: the runner's system
+        # Python is externally managed and is 3.12 whatever the matrix says, so
+        # --system both failed and ignored the version under test. This is also
+        # exactly what the README tells a person to run.
+        run: |
+          uv venv --python ${{ matrix.python-version }}
+          uv pip install -e ".[dev]"
+          .venv/bin/python -c "import sys; print('testing on', sys.version)"
 
       - name: Test
-        run: pytest -q
+        run: .venv/bin/pytest -q
 
       - name: Lint
-        run: ruff check src tests
+        run: .venv/bin/ruff check src tests scripts
 
       - name: Types
-        run: mypy
+        run: .venv/bin/mypy
 
       - name: Confirm the package still has no runtime dependencies
         # The zero-dependency claim is in the README and the pyproject comment; a
@@ -69,5 +71,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
-      - run: uv pip install --system -e .
-      - run: python scripts/check_blocked_list.py
+      - run: |
+          uv venv
+          uv pip install -e .
+      - run: .venv/bin/python scripts/check_blocked_list.py
