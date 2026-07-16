@@ -8,6 +8,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from email.message import EmailMessage
 from email.utils import formatdate, make_msgid
+from typing import Self
 
 from mailrun.attachment import Attachment
 from mailrun.errors import InvalidMessageError
@@ -19,11 +20,16 @@ __all__ = ["Message"]
 class Message:
     """Subject, body, recipients, and attachments.
 
-    A single address may be given as a plain string anywhere a list is accepted;
-    it is normalized to a one-element tuple. This matters more than it looks: the
-    fields are tuples of strings, and a bare `str` is itself an iterable of
-    characters, so without normalization `to="a@b.com"` would quietly become
-    twenty-odd single-character recipients.
+    The constructor is strict: recipients are tuples, and a bare string is
+    refused rather than accepted. `Message.compose` is the loose door, where a
+    lone address may be a plain string.
+
+    The split is not fussiness. A dataclass field annotation is also its
+    `__init__` parameter type -- one site, two roles -- so a field cannot be
+    honest about a stored tuple and an accepted string at once. And the refusal
+    earns its keep on its own: a `str` is an iterable of characters, so an
+    accepted `to="a@b.com"` is sixteen single-character recipients, and nothing
+    here type-checks.
 
     Attributes
     ----------
@@ -46,10 +52,45 @@ class Message:
     html: str | None = None
     attachments: tuple[Attachment, ...] = ()
 
+    @classmethod
+    def compose(
+        cls,
+        *,
+        subject: str,
+        body: str,
+        to: str | Iterable[str],
+        cc: str | Iterable[str] = (),
+        bcc: str | Iterable[str] = (),
+        html: str | None = None,
+        attachments: Iterable[Attachment] = (),
+    ) -> Self:
+        """A message from loose recipients: a lone address may be a plain string.
+
+        This is where the string shorthand lives, and the constructor stays
+        strict, because a dataclass field annotation is one site serving two
+        roles -- it is also the `__init__` parameter type. Writing
+        `to: str | tuple[str, ...]` to be honest about what is accepted makes it
+        dishonest about what is stored, since `message.to` is never a string.
+        Splitting the two is what the standard library and every record type
+        around it do: the attribute says what it holds, and the breadth goes on
+        the signature that does the accepting.
+        """
+        return cls(
+            subject     = subject,
+            body        = body,
+            to          = _as_address_tuple(to),
+            cc          = _as_address_tuple(cc),
+            bcc         = _as_address_tuple(bcc),
+            html        = html,
+            attachments = tuple(attachments),
+        )
+
     def __post_init__(self) -> None:
-        object.__setattr__(self, "to", _as_address_tuple(self.to))
-        object.__setattr__(self, "cc", _as_address_tuple(self.cc))
-        object.__setattr__(self, "bcc", _as_address_tuple(self.bcc))
+        for name in ("to", "cc", "bcc"):
+            _refuse_bare_string(name, getattr(self, name))
+        object.__setattr__(self, "to", tuple(self.to))
+        object.__setattr__(self, "cc", tuple(self.cc))
+        object.__setattr__(self, "bcc", tuple(self.bcc))
         object.__setattr__(self, "attachments", tuple(self.attachments))
         if not self.recipients:
             raise InvalidMessageError("a message needs at least one recipient")
@@ -110,6 +151,23 @@ class Message:
                 filename = attachment.filename,
             )
         return mime
+
+
+def _refuse_bare_string(field_name: str, value: object) -> None:
+    """Reject a lone string where a tuple of addresses belongs.
+
+    A `str` is itself an iterable of characters, so `to="a@b.com"` would be
+    sixteen single-character recipients rather than one address -- and nothing
+    type-checks this package, so no tool would say a word. The constructor is
+    strict on purpose; the string shorthand lives on `Message.compose`.
+    """
+    if isinstance(value, str):
+        raise InvalidMessageError(
+            f"{field_name} takes a tuple of addresses, not a bare string: "
+            f"{field_name}={value!r} would send one message per character. "
+            f"Write {field_name}=({value!r},), or use "
+            f"Message.compose({field_name}={value!r}, ...)"
+        )
 
 
 def _as_address_tuple(value: str | Iterable[str]) -> tuple[str, ...]:

@@ -166,7 +166,7 @@ def send_mail(
     """
     config = config if config is not None else load_config()
     smtp_account = config.resolve_account(account)
-    message = Message(
+    message = Message.compose(
         subject     = subject,
         body        = body,
         html        = html,

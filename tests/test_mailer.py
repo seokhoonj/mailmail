@@ -50,7 +50,7 @@ TINY_LIMIT_ACCOUNT = SmtpAccount(
 
 def a_message(**overrides):
     fields = {"subject": "Weekly report", "body": "FYI", "to": "lead@example.com"}
-    return Message(**(fields | overrides))
+    return Message.compose(**(fields | overrides))
 
 
 class TestConnection:

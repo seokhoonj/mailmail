@@ -15,7 +15,7 @@ def a_message(**overrides):
         "body":    "Please see attached.",
         "to":      "lead@example.com",
     }
-    return Message(**(fields | overrides))
+    return Message.compose(**(fields | overrides))
 
 
 class TestRecipientNormalization:
@@ -95,7 +95,9 @@ class TestAddressesWithLineBreaks:
     def test_the_refusal_happens_before_any_mime_is_built(self):
         # __post_init__, not to_mime: nothing should get as far as assembling.
         with pytest.raises(InvalidMessageError):
-            Message(subject="s", body="b", to="a@example.com", bcc="b@example.com\r\n")
+            Message.compose(
+                subject="s", body="b", to="a@example.com", bcc="b@example.com\r\n"
+            )
 
 
 class TestHeaders:

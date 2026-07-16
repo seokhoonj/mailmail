@@ -163,8 +163,26 @@ from mailrun import Mailer, Message, load_config
 config = load_config()
 with Mailer(config.resolve_account("naver")) as mailer:
     for row in rows:
-        mailer.send(Message(subject=row.subject, body=row.body, to=row.address))
+        mailer.send(
+            Message.compose(subject=row.subject, body=row.body, to=row.address)
+        )
 ```
+
+`Message.compose(...)`가 느슨한 문(門)이다 — 주소 하나면 문자열로 줘도 된다. 생성자
+`Message(...)`는 엄격해서 수신자에 튜플을 요구하고 맨 문자열은 **거부한다**:
+
+```python
+Message(subject="s", body="b", to="lead@example.com")   # InvalidMessageError
+Message(subject="s", body="b", to=("lead@example.com",))  # ok
+Message.compose(subject="s", body="b", to="lead@example.com")  # ok
+```
+
+까다로워 보이지만 이유가 있다. 파이썬에서 `str`은 그 자체로 문자들의 이터러블이라,
+받아주면 `to="lead@example.com"`이 **주소 하나가 아니라 16명의 한 글자짜리 수신자**가
+된다. 그리고 dataclass의 필드 타입은 곧 `__init__`의 파라미터 타입이라(한 자리, 두 역할),
+저장하는 타입과 받는 타입을 한 줄에 동시에 정직하게 적을 수가 없다. 그래서 속성은 저장하는
+것을 말하고, 받아들이는 폭은 `compose`가 말한다. `send_mail`은 이미 그 폭을 정직하게 선언
+하므로, 일상적으로 쓰는 문에서는 이 구분이 보이지 않는다.
 
 ## 알아둘 것
 
