@@ -17,7 +17,7 @@ import zipfile
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import BinaryIO, Self
+from typing import IO, Self
 
 from mailrun.errors import (
     AttachmentError,
@@ -211,7 +211,7 @@ def _without_trailing_padding(name: str) -> str:
 
 
 def _archive_member_names(
-    source: Path | BinaryIO, name: str, *, depth: int = 0
+    source: Path | IO[bytes], name: str, *, depth: int = 0
 ) -> Iterator[str]:
     """Every name stored inside `source`, descending through nested archives.
 
@@ -252,7 +252,7 @@ def _is_compressed_tar(name: str) -> bool:
 
 
 def _zip_member_names(
-    source: Path | BinaryIO, name: str, *, depth: int = 0
+    source: Path | IO[bytes], name: str, *, depth: int = 0
 ) -> Iterator[str]:
     try:
         with zipfile.ZipFile(source) as archive:
@@ -276,7 +276,7 @@ def _zip_member_names(
 
 
 def _tar_member_names(
-    source: Path | BinaryIO, name: str, *, depth: int = 0
+    source: Path | IO[bytes], name: str, *, depth: int = 0
 ) -> Iterator[str]:
     try:
         # Opened inside the try because tarfile.open itself is what raises on a
@@ -298,7 +298,7 @@ def _tar_member_names(
         return
 
 
-def _open_tar(source: Path | BinaryIO) -> tarfile.TarFile:
+def _open_tar(source: Path | IO[bytes]) -> tarfile.TarFile:
     """A tar from a path or an already-open stream (a nested member)."""
     if isinstance(source, Path):
         return tarfile.open(source)
@@ -306,7 +306,7 @@ def _open_tar(source: Path | BinaryIO) -> tarfile.TarFile:
 
 
 def _nested_member_names(
-    nested: BinaryIO, name: str, *, outer: str, depth: int
+    nested: IO[bytes], name: str, *, outer: str, depth: int
 ) -> Iterator[str]:
     """Names inside an archive that is itself a member of another archive.
 

@@ -219,9 +219,11 @@ def _advertised_size_limit(smtp: smtplib.SMTP) -> int | None:
     was happy to take.
     """
     advertised = smtp.esmtp_features.get("size")
+    if advertised is None:
+        return None
     try:
         limit_bytes = int(advertised)
-    except (TypeError, ValueError):
+    except ValueError:
         return None
     return limit_bytes or None
 

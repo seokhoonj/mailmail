@@ -1,0 +1,73 @@
+name: check
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "0 0 * * 1"
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # The floor and the current release. requires-python says >=3.11, so 3.11
+        # is the version the claim has to actually hold on.
+        python-version: ["3.11", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Set up Python ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
+
+      - name: Install
+        run: uv pip install --system -e ".[dev]"
+
+      - name: Test
+        run: pytest -q
+
+      - name: Lint
+        run: ruff check src tests
+
+      - name: Types
+        run: mypy
+
+      - name: Confirm the package still has no runtime dependencies
+        # The zero-dependency claim is in the README and the pyproject comment; a
+        # claim nothing checks is a claim that quietly stops being true. Installed
+        # into a bare environment, mailrun must import with nothing else present.
+        run: |
+          uv venv /tmp/bare --python ${{ matrix.python-version }}
+          uv pip install --python /tmp/bare/bin/python .
+          /tmp/bare/bin/python -c "
+          import importlib.metadata as md
+          requires = md.requires('mailrun') or []
+          runtime = [r for r in requires if 'extra ==' not in r]
+          assert not runtime, f'runtime dependencies appeared: {runtime}'
+          import mailrun
+          print('mailrun', mailrun.__version__, 'imports with no third-party packages')
+          "
+
+  blocked-list-drift:
+    # The size limit is asked of the server on every send, so it cannot go stale.
+    # The blocked-extension list can: it is a snapshot of what Google published,
+    # and Google can change it without telling anyone. This is the only part of
+    # what the package knows that has no way of noticing it went wrong.
+    #
+    # Weekly and on demand, never on a push: a code change is not the reason the
+    # list would move, and a Google page edit must not turn someone's pull
+    # request red.
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv pip install --system -e .
+      - run: python scripts/check_blocked_list.py

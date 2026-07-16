@@ -234,7 +234,25 @@ ln -s ~/Dropbox/mailrun/skills/send-mail ~/.claude/skills/send-mail
 ## 테스트
 
 ```sh
-.venv/bin/pytest
+.venv/bin/pytest              # 216개, 전부 오프라인·결정적
+.venv/bin/ruff check src tests scripts
+.venv/bin/mypy                # src 는 --strict, 테스트는 애노테이션 의무만 면제
 ```
 
-전부 오프라인이고 결정적이다 — SMTP는 가짜 서버로 대체되므로 테스트가 메일을 보내지 않는다.
+테스트는 SMTP를 가짜 서버로 대체하므로 **메일을 보내지 않는다.** CI(`.github/workflows/check.yml`)가
+Python 3.11과 3.13에서 같은 셋을 돌리고, 여기에 하나를 더 확인한다 — **빈 환경에 설치해서
+서드파티 없이 import 되는지.** 의존성 0은 README와 pyproject의 주장인데, 아무도 검사하지 않는
+주장은 조용히 거짓이 되기 때문이다.
+
+### 스냅샷인 지식 하나
+
+크기 한도는 보낼 때마다 서버에 물어보므로 낡을 수가 없다. **차단 확장자 목록은 물어볼 데가
+없다** — 구글이 게시한 것을 누군가 읽은 날의 스냅샷이고, 구글은 말 없이 바꿀 수 있다. 이
+패키지가 아는 것 중 유일하게 스스로 틀렸음을 알아챌 방법이 없는 부분이다.
+
+```sh
+.venv/bin/python scripts/check_blocked_list.py    # 구글 페이지와 대조, 다르면 exit 1
+```
+
+CI가 매주 월요일에 이걸 돌린다. 푸시할 때는 안 돌린다 — 목록이 움직이는 이유는 코드 변경이
+아니고, 구글의 페이지 수정이 남의 PR을 빨갛게 만들면 안 된다.

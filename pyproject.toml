@@ -17,6 +17,7 @@ dependencies = []
 
 [project.optional-dependencies]
 dev = [
+    "mypy>=1.11",
     "pytest>=8.0",
     "ruff>=0.6",
 ]
@@ -38,3 +39,20 @@ docstring-code-format = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.mypy]
+python_version = "3.11"
+files = ["src", "tests"]
+strict = true
+
+# Tests get the real checks but not the annotation ceremony: `-> None` on two
+# hundred test functions is noise, and the signature of a test is never the thing
+# under review. The package itself is strict without exception -- it is the part
+# with a contract, and an unchecked hint there is exactly what let `to` claim to
+# be a tuple while accepting a string.
+[[tool.mypy.overrides]]
+module = "tests.*"
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+disallow_untyped_calls = false
+check_untyped_defs = true

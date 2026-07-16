@@ -219,9 +219,14 @@ class TestReceiptIsAReadOnlyRecord:
     def test_the_refusal_map_cannot_be_written_into(self, fake_smtp):
         # is_complete is derived from this mapping, so a writable one lets a
         # caller change what the send appears to have done.
+        #
+        # The type: ignore is the point, not an escape: the field is a Mapping, so
+        # mypy refuses the assignment outright and this test proves the runtime
+        # refuses it too. Both layers hold, and the ignore is what lets the second
+        # be tested at all.
         receipt = Mailer(ACCOUNT).send(a_message())
         with pytest.raises(TypeError):
-            receipt.reason_by_refused_recipient["typo@example.com"] = "550 nope"
+            receipt.reason_by_refused_recipient["typo@example.com"] = "550 nope"  # type: ignore[index]
         assert receipt.is_complete
 
 
@@ -263,8 +268,8 @@ class TestEnvelope:
             a_message(to="lead@example.com", bcc="audit@example.com")
         )
         sent = fake_smtp.sent_messages[0]
-        assert "audit@example.com" in sent["to"]
-        assert "audit@example.com" not in sent["payload"].decode()
+        assert "audit@example.com" in sent.recipients
+        assert "audit@example.com" not in sent.payload.decode()
 
     def test_envelope_carries_to_cc_and_bcc_alike(self, fake_smtp):
         Mailer(ACCOUNT).send(
@@ -274,7 +279,7 @@ class TestEnvelope:
                 bcc="audit@example.com",
             )
         )
-        assert fake_smtp.sent_messages[0]["to"] == [
+        assert fake_smtp.sent_messages[0].recipients == [
             "lead@example.com",
             "analyst@example.com",
             "audit@example.com",
@@ -282,7 +287,7 @@ class TestEnvelope:
 
     def test_envelope_sender_is_the_account(self, fake_smtp):
         Mailer(ACCOUNT).send(a_message())
-        assert fake_smtp.sent_messages[0]["from"] == "sender@example.com"
+        assert fake_smtp.sent_messages[0].sender == "sender@example.com"
 
 
 class TestReceipt:

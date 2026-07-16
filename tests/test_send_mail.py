@@ -43,7 +43,7 @@ def headers_of(server):
 class TestWithoutConfiguredDefaults:
     def test_named_recipient_is_used(self, fake_smtp):
         send_mail(to="lead", subject="s", body="b", config=a_config())
-        assert fake_smtp.sent_messages[0]["to"] == ["lead@example.com"]
+        assert fake_smtp.sent_messages[0].recipients == ["lead@example.com"]
 
     def test_message_with_no_recipient_at_all_is_refused(self, fake_smtp):
         with pytest.raises(ValueError, match="at least one recipient"):
@@ -59,7 +59,7 @@ class TestConfiguredDefaults:
 
     def test_omitting_everything_uses_both_defaults(self, fake_smtp):
         send_mail(subject="s", body="b", config=self.config_with_defaults())
-        assert fake_smtp.sent_messages[0]["to"] == [
+        assert fake_smtp.sent_messages[0].recipients == [
             "lead@example.com",
             "reviewer@example.com",
         ]
@@ -70,7 +70,7 @@ class TestConfiguredDefaults:
     ):
         # The default is stored as an alias, not an address; it must expand.
         send_mail(subject="s", body="b", config=self.config_with_defaults())
-        assert "lead@example.com" in fake_smtp.sent_messages[0]["to"]
+        assert "lead@example.com" in fake_smtp.sent_messages[0].recipients
 
     def test_naming_to_overrides_the_default_to(self, fake_smtp):
         send_mail(to="me", subject="s", body="b", config=self.config_with_defaults())
@@ -90,13 +90,13 @@ class TestConfiguredDefaults:
         )
         _to, cc_header = headers_of(fake_smtp)
         assert cc_header is None
-        assert fake_smtp.sent_messages[0]["to"] == ["me@example.com"]
+        assert fake_smtp.sent_messages[0].recipients == ["me@example.com"]
 
     def test_empty_to_with_a_named_cc_still_delivers_to_the_cc(self, fake_smtp):
         send_mail(
             to=(), cc="lead", subject="s", body="b", config=self.config_with_defaults()
         )
-        assert fake_smtp.sent_messages[0]["to"] == ["lead@example.com"]
+        assert fake_smtp.sent_messages[0].recipients == ["lead@example.com"]
 
     def test_emptying_every_recipient_is_refused(self, fake_smtp):
         with pytest.raises(ValueError, match="at least one recipient"):
@@ -154,7 +154,7 @@ class TestConfiguredDefaults:
             body="b",
             config=a_config(default_to=("lead",), default_bcc=("reviewer",)),
         )
-        assert "reviewer@example.com" in fake_smtp.sent_messages[0]["to"]
+        assert "reviewer@example.com" in fake_smtp.sent_messages[0].recipients
         assert "reviewer@example.com" not in fake_smtp.last_payload.decode()
 
     def test_bcc_default_can_be_emptied_too(self, fake_smtp):
@@ -164,4 +164,4 @@ class TestConfiguredDefaults:
             body="b",
             config=a_config(default_to=("lead",), default_bcc=("reviewer",)),
         )
-        assert fake_smtp.sent_messages[0]["to"] == ["lead@example.com"]
+        assert fake_smtp.sent_messages[0].recipients == ["lead@example.com"]

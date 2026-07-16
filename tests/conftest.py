@@ -14,11 +14,25 @@ goes wrong partway through a handshake.
 
 import email
 import smtplib
+from typing import NamedTuple
 
 import pytest
 
 # What smtp.gmail.com really advertises, so the default case is the real one.
 GMAIL_ADVERTISED_SIZE = 35_882_577
+
+
+class SentMessage(NamedTuple):
+    """One handoff to the server, as the server saw it.
+
+    A record rather than a dict so `last_payload` can honestly promise bytes --
+    out of an untyped dict it was promising `Any` and calling it `bytes`, which
+    is the same lying-hint the package itself was just fixed for.
+    """
+
+    payload: bytes
+    sender: str
+    recipients: list[str]
 
 
 class FakeSmtp:
@@ -39,9 +53,9 @@ class FakeSmtp:
         self.esmtp_features = (
             {"size": str(advertised_size)} if advertised_size is not None else {}
         )
-        self.sent_messages = []
-        self.logins = []
-        self.connections = []
+        self.sent_messages: list[SentMessage] = []
+        self.logins: list[tuple[str, str]] = []
+        self.connections: list[dict[str, object]] = []
         self.started_tls = False
         self.quit_count = 0
         self.close_count = 0
@@ -70,7 +84,7 @@ class FakeSmtp:
 
     def sendmail(self, from_addr, to_addrs, msg):
         self.sent_messages.append(
-            {"payload": msg, "from": from_addr, "to": list(to_addrs)}
+            SentMessage(payload=msg, sender=from_addr, recipients=list(to_addrs))
         )
         if self.refusals and set(self.refusals) >= set(to_addrs):
             raise smtplib.SMTPRecipientsRefused(self.refusals)
@@ -90,7 +104,7 @@ class FakeSmtp:
 
     @property
     def last_payload(self) -> bytes:
-        return self.sent_messages[0]["payload"]
+        return self.sent_messages[0].payload
 
     def header(self, name: str) -> str | None:
         """One header out of the bytes the server was actually handed.
