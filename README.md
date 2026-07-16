@@ -224,7 +224,7 @@ with Mailer(config.resolve_account("naver")) as mailer:
 ```
 
 `Message.compose(...)`가 느슨한 문(門)이다 — 주소 하나면 문자열로 줘도 된다. 생성자
-`Message(...)`는 엄격해서 수신자에 튜플을 요구하고 맨 문자열은 **거부한다**:
+`Message(...)`는 엄격해서 수신자에게 튜플을 요구하고 단독 문자열은 **거부한다**:
 
 ```python
 Message(subject="s", body="b", to="lead@example.com")   # InvalidMessageError
