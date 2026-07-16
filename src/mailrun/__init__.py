@@ -4,13 +4,14 @@ The one-liner:
 
     from mailrun import send_mail
 
-    send_mail(to="lead", subject="주간 보고", body="첨부 확인 부탁드립니다.",
+    send_mail(to="lead", subject="Weekly report", body="Attached, as discussed.",
               attachments=["report.xlsx"])
 
-`to` takes addresses, address-book aliases, or both. Anything the provider would
-reject -- a blocked file type, an archive it cannot scan, a message over the
-server's size limit -- raises before a connection is opened, so failures land at
-the call site instead of arriving later as a bounce.
+`to` takes addresses, address-book aliases, or both, and falls back to the
+configured default when not mentioned. Anything the provider would reject -- a
+blocked file type, an archive it cannot scan, a message over the server's size
+limit -- raises before a connection is opened, so failures land at the call site
+instead of arriving later as a bounce.
 
 Sending as a particular mailbox is `account="gmail"`; reusing one connection for
 a batch is `Mailer`.
