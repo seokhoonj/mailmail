@@ -109,7 +109,7 @@ def load_config(path: Path | str | None = None) -> Config:
 
 def _as_config(document: dict[str, Any], *, path: Path) -> Config:
     accounts = document.get("accounts")
-    if not accounts:
+    if not isinstance(accounts, dict) or not accounts:
         raise ConfigError(f"{path} defines no accounts; add an [accounts.<name>] table")
     account_by_name = {
         name: _as_account(name, table, path=path) for name, table in accounts.items()
@@ -164,6 +164,15 @@ def _as_account(name: str, table: Any, *, path: Path) -> SmtpAccount:
     for key in ("provider", "username"):
         if key not in table:
             raise ConfigError(f"{path}: [accounts.{name}] is missing {key!r}")
+        # Checking the type, not just the presence: `username = 12345` parses
+        # fine and then detonates inside the email headers, long after the config
+        # file is out of view -- in a package whose whole thesis is that a bad
+        # message dies at the call site.
+        if not isinstance(table[key], str):
+            raise ConfigError(
+                f"{path}: [accounts.{name}].{key} must be a string, not "
+                f"{type(table[key]).__name__}"
+            )
     return SmtpAccount(
         name     = name,
         username = table["username"],
@@ -198,10 +207,14 @@ def _as_dotted_key_advice(alias: str, nested: dict[str, Any], *, path: Path) -> 
     `jane` containing `doe`. The reader sees a name they never wrote, so
     "contact 'jane' must be a string" is true but useless on its own.
     """
-    wanted = f"{alias}.{next(iter(nested))}"
+    # `[contacts.jane]` on its own nests an *empty* table, so there is no inner
+    # key to name -- and this is the one function whose whole job is to make the
+    # typo legible, which it cannot do by raising StopIteration at the reader.
+    wanted = f"{alias}.{next(iter(nested), '<key>')}"
+    held = ", ".join(map(repr, nested)) or "a nested table"
     return (
         f"{path}: contact {alias!r} came out as a table. TOML reads an unquoted "
         f"dot as nesting, so `{wanted} = ...` defines {alias!r} containing "
-        f"{', '.join(map(repr, nested))} rather than an alias named {wanted!r}. "
+        f"{held} rather than an alias named {wanted!r}. "
         f'Quote it to keep the dot: "{wanted}" = "someone@example.com"'
     )

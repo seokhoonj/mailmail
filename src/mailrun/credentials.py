@@ -138,6 +138,13 @@ def delete_password(account: SmtpAccount, *, path: Path | None = None) -> None:
     """Remove the account's password from the credentials file.
 
     Does nothing when no password is stored, so revoking is safe to repeat.
+
+    Raises
+    ------
+    CredentialsError
+        The file exists but is not readable JSON, so the other accounts' entries
+        cannot be preserved. Worth knowing: revoking a leaked password is exactly
+        the call that ends up in a `finally`.
     """
     path = path if path is not None else default_credentials_path()
     password_by_username = _load_password_by_username(path)
@@ -170,22 +177,34 @@ def _load_password_by_username(path: Path) -> dict[str, str]:
 def _write_password_by_username(
     path: Path, password_by_username: dict[str, str]
 ) -> None:
-    """Write the store, owner-readable from the moment it exists.
+    """Write the store: whole, or not at all, and never briefly readable.
 
-    The file is opened through `os.open` with the mode applied at creation rather
-    than written and chmod-ed after: the latter leaves a window, however brief, in
-    which the password sits on disk world-readable.
+    Written to a new file and renamed over the target, for two reasons that both
+    bite the obvious implementation:
+
+    Opening the real file with `O_TRUNC` empties it *before* the new content is
+    written, so a crash in between leaves an empty store -- saving the second
+    account's password would destroy the first account's. `os.replace` is atomic,
+    so a reader sees either the old store or the new one.
+
+    And `O_CREAT` applies its mode only to a file it creates; an existing store
+    keeps whatever mode it had, so writing into one that had been loosened to
+    0644 would put the password on disk world-readable and only tighten it
+    afterwards. A fresh file is 0600 from the moment it exists.
     """
     path.parent.mkdir(parents=True, exist_ok=True)
-    descriptor = os.open(
-        path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, CREDENTIALS_FILE_MODE
-    )
-    with os.fdopen(descriptor, "w", encoding="utf-8") as store:
-        json.dump(password_by_username, store, indent=2, ensure_ascii=False)
-        store.write("\n")
-    # O_CREAT honours the mode only when the file is new; an existing file keeps
-    # whatever it had, so tighten it explicitly.
-    path.chmod(CREDENTIALS_FILE_MODE)
+    staged = path.with_name(f"{path.name}.{os.getpid()}.tmp")
+    try:
+        descriptor = os.open(
+            staged, os.O_WRONLY | os.O_CREAT | os.O_EXCL, CREDENTIALS_FILE_MODE
+        )
+        with os.fdopen(descriptor, "w", encoding="utf-8") as store:
+            json.dump(password_by_username, store, indent=2, ensure_ascii=False)
+            store.write("\n")
+        os.replace(staged, path)
+    except BaseException:
+        staged.unlink(missing_ok=True)
+        raise
 
 
 def _check_owner_only_readable(path: Path) -> None:

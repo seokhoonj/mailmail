@@ -10,12 +10,14 @@ The other half of the job is the MIME type. Guessing it wrong is the usual reaso
 an attachment arrives corrupted or inlined into the body instead of attached.
 """
 
+import io
 import mimetypes
 import tarfile
 import zipfile
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from typing import BinaryIO, Self
 
 from mailrun.errors import (
     AttachmentError,
@@ -36,12 +38,19 @@ _ZIP_SUFFIXES = frozenset({".zip"})
 _TAR_SUFFIXES = frozenset({".tar", ".tgz", ".tbz", ".tbz2", ".txz"})
 _COMPRESSED_SUFFIXES = frozenset({".gz", ".bz2", ".xz"})
 
-# Archive formats with no stdlib reader. Their contents cannot be inspected, so a
-# blocked file inside one reaches the server unchecked -- stated in the README
-# rather than silently pretended away.
-_UNINSPECTABLE_SUFFIXES = frozenset({".7z", ".rar"})
-
 _ZIP_ENCRYPTED_FLAG = 0x1
+
+# How far to descend through archives-inside-archives. Deep enough for anything
+# an honest sender produces; shallow enough that a nest built to exhaust the
+# scanner stops instead. Hitting it means "we could not scan to the bottom",
+# which is refused rather than waved through.
+_MAX_ARCHIVE_DEPTH = 4
+
+# Most a nested archive is read into memory to inspect it. The outer file is
+# already capped by the message-size limit, but decompression is not -- a few
+# hundred kilobytes of zip can expand to gigabytes. A member larger than this is
+# refused as unscannable rather than expanded.
+_MAX_NESTED_ARCHIVE_BYTES = 64 * 1024 * 1024
 
 
 @dataclass(frozen=True, slots=True)
@@ -62,8 +71,21 @@ class Attachment:
     mime_type: str
     size_bytes: int
 
+    def __post_init__(self) -> None:
+        # `from_path` always produces a well-formed type, but the class is public
+        # and freely constructible: `mime_type="pdf"` used to go out as
+        # `Content-Type: pdf/` -- a malformed header reaching the server through
+        # the one package that promises to catch such things first.
+        maintype, slash, subtype = self.mime_type.partition("/")
+        if not (maintype and slash and subtype):
+            raise AttachmentError(
+                f"mime_type must read 'maintype/subtype', not "
+                f"{self.mime_type!r}; Attachment.from_path guesses a valid one "
+                f"from the suffix"
+            )
+
     @classmethod
-    def from_path(cls, path: Path | str) -> "Attachment":
+    def from_path(cls, path: Path | str) -> Self:
         """Read a file's metadata and guess its MIME type.
 
         Raises
@@ -138,8 +160,8 @@ def _check_one_attachment(attachment: Attachment, *, provider: MailProvider) -> 
     if blocked:
         raise BlockedAttachmentError(
             f"{provider.name} blocks {_describe_blocked(attachment, blocked)}; "
-            f"compressing it does not help -- the block applies inside archives "
-            f"too. Share it through a file link instead."
+            f"putting it in a .zip or .tar.gz does not help, because those are "
+            f"looked inside. Share it through a file link instead."
         )
 
 
@@ -157,7 +179,7 @@ def _blocked_names_in(path: Path, blocked_extensions: frozenset[str]) -> list[st
         blocked.append(path.name)
     blocked.extend(
         name
-        for name in _archive_member_names(path)
+        for name in _archive_member_names(path, path.name)
         if _is_blocked_name(name, blocked_extensions)
     )
     return blocked
@@ -166,62 +188,154 @@ def _blocked_names_in(path: Path, blocked_extensions: frozenset[str]) -> list[st
 def _is_blocked_name(name: str, blocked_extensions: frozenset[str]) -> bool:
     """Whether a filename's suffix is blocked.
 
-    A `.gz`/`.bz2`/`.xz` wrapper is transparent to the provider: `setup.exe.gz`
-    is blocked on the strength of the `.exe` underneath it.
+    Trailing dots and spaces come off first. Windows drops them when it writes
+    the file, so `setup.exe.` lands on the recipient's disk as `setup.exe` and
+    runs -- and Gmail refuses that name, verified against the live server, so
+    reading the suffix as typed would pass a message the provider bounces.
+
+    A `.gz`/`.bz2`/`.xz` wrapper is then peeled: `setup.exe.gz` is blocked on the
+    strength of the `.exe` underneath it. Peeling is a loop and not recursion
+    because these names are not bounded the way real filenames are -- the
+    filesystem caps a path at 255 bytes, but a zip may store a 64 KB member name,
+    and a thousand stacked `.gz` was enough to exhaust the stack.
     """
-    suffix = Path(name).suffix.lower()
-    if suffix in _COMPRESSED_SUFFIXES:
-        return _is_blocked_name(Path(name).stem, blocked_extensions)
+    stem = _without_trailing_padding(Path(name).name)
+    while (suffix := Path(stem).suffix.lower()) in _COMPRESSED_SUFFIXES:
+        stem = _without_trailing_padding(Path(stem).stem)
     return suffix in blocked_extensions
 
 
-def _archive_member_names(path: Path) -> Iterable[str]:
-    """Names stored inside `path`, or nothing when it is not a readable archive.
+def _without_trailing_padding(name: str) -> str:
+    """A filename without the trailing dots and spaces Windows discards."""
+    return name.rstrip(". ")
+
+
+def _archive_member_names(
+    source: Path | BinaryIO, name: str, *, depth: int = 0
+) -> Iterator[str]:
+    """Every name stored inside `source`, descending through nested archives.
+
+    Yields nothing when `name` is not an archive this can read. Descends because
+    one level is not what a provider does: `outer.zip` holding `inner.zip`
+    holding `setup.exe` is refused by Gmail, so stopping at `inner.zip` would
+    pass a message that bounces.
+
+    Parameters
+    ----------
+    source
+        The archive, as a path or an open byte stream (a nested member).
+    name
+        The archive's filename, which is what decides how to read it. Passed
+        separately because a nested member has no path of its own.
+    depth
+        How many archives have already been opened to reach this one.
 
     Raises
     ------
     EncryptedArchiveError
-        The zip is password-protected. Providers reject those whatever is inside,
-        because they cannot scan the contents.
+        A zip is password-protected, or the nest is too deep or too large to
+        scan. Providers reject what they cannot look inside, and so does this.
     """
-    suffix = path.suffix.lower()
+    suffix = Path(name).suffix.lower()
     if suffix in _ZIP_SUFFIXES:
-        return _zip_member_names(path)
-    if suffix in _TAR_SUFFIXES or _is_compressed_tar(path):
-        return _tar_member_names(path)
+        yield from _zip_member_names(source, name, depth=depth)
+    elif suffix in _TAR_SUFFIXES or _is_compressed_tar(name):
+        yield from _tar_member_names(source, name, depth=depth)
     # A bare .gz/.bz2/.xz wraps a single stream and stores no member list; the
     # name underneath is the path's own stem, which _is_blocked_name already
     # unwraps. Nothing further to look inside.
-    return ()
 
 
-def _is_compressed_tar(path: Path) -> bool:
-    suffixes = [suffix.lower() for suffix in path.suffixes]
+def _is_compressed_tar(name: str) -> bool:
+    suffixes = [suffix.lower() for suffix in Path(name).suffixes]
     return len(suffixes) >= 2 and suffixes[-2] == ".tar"
 
 
-def _zip_member_names(path: Path) -> list[str]:
+def _zip_member_names(
+    source: Path | BinaryIO, name: str, *, depth: int = 0
+) -> Iterator[str]:
     try:
-        with zipfile.ZipFile(path) as archive:
+        with zipfile.ZipFile(source) as archive:
             members = archive.infolist()
             if any(member.flag_bits & _ZIP_ENCRYPTED_FLAG for member in members):
                 raise EncryptedArchiveError(
-                    f"{path.name} is password-protected; mail providers reject "
+                    f"{name} is password-protected; mail providers reject "
                     f"encrypted archives because they cannot scan the contents"
                 )
-            return [member.filename for member in members]
+            for member in members:
+                yield member.filename
+                if _is_archive_name(member.filename):
+                    with archive.open(member) as nested:
+                        yield from _nested_member_names(
+                            nested, member.filename, outer=name, depth=depth
+                        )
     except zipfile.BadZipFile:
         # Not actually a zip despite the suffix. Nothing to look inside; the
         # provider will judge it on its own suffix like any other file.
-        return []
+        return
 
 
-def _tar_member_names(path: Path) -> list[str]:
+def _tar_member_names(
+    source: Path | BinaryIO, name: str, *, depth: int = 0
+) -> Iterator[str]:
     try:
-        with tarfile.open(path) as archive:
-            return archive.getnames()
-    except tarfile.TarError:
-        return []
+        # Opened inside the try because tarfile.open itself is what raises on a
+        # file that is not a tar -- the `with` cannot start until it returns.
+        opened = _open_tar(source)
+        with opened as archive:
+            for member in archive.getmembers():
+                yield member.name
+                if member.isfile() and _is_archive_name(member.name):
+                    nested = archive.extractfile(member)
+                    if nested is not None:
+                        yield from _nested_member_names(
+                            nested, member.name, outer=name, depth=depth
+                        )
+    except tarfile.ReadError:
+        # Not actually a tar despite the suffix -- the narrow error, not the whole
+        # TarError family: a genuinely broken archive must not read as "no members
+        # inside, nothing blocked".
+        return
+
+
+def _open_tar(source: Path | BinaryIO) -> tarfile.TarFile:
+    """A tar from a path or an already-open stream (a nested member)."""
+    if isinstance(source, Path):
+        return tarfile.open(source)
+    return tarfile.open(fileobj=source)
+
+
+def _nested_member_names(
+    nested: BinaryIO, name: str, *, outer: str, depth: int
+) -> Iterator[str]:
+    """Names inside an archive that is itself a member of another archive.
+
+    Reads the member into memory to read it as an archive, which is why both the
+    depth and the size are capped here rather than left to the caller.
+    """
+    if depth + 1 >= _MAX_ARCHIVE_DEPTH:
+        raise EncryptedArchiveError(
+            f"{outer} nests archives more than {_MAX_ARCHIVE_DEPTH} deep at "
+            f"{name}; mail providers reject what they cannot scan to the bottom, "
+            f"and neither this nor they will unpack it further"
+        )
+    payload = nested.read(_MAX_NESTED_ARCHIVE_BYTES + 1)
+    if len(payload) > _MAX_NESTED_ARCHIVE_BYTES:
+        raise EncryptedArchiveError(
+            f"{name} inside {outer} expands past "
+            f"{_as_mib(_MAX_NESTED_ARCHIVE_BYTES)}, so it cannot be scanned "
+            f"without unpacking more than the message could ever carry"
+        )
+    yield from _archive_member_names(io.BytesIO(payload), name, depth=depth + 1)
+
+
+def _is_archive_name(name: str) -> bool:
+    suffix = Path(name).suffix.lower()
+    return (
+        suffix in _ZIP_SUFFIXES
+        or suffix in _TAR_SUFFIXES
+        or _is_compressed_tar(name)
+    )
 
 
 def _as_mib(size_bytes: int) -> str:

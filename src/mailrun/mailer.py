@@ -6,11 +6,11 @@ what makes a batch cheap; used bare, each `send` opens and closes its own.
 """
 
 import smtplib
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass
 from email.message import EmailMessage
-from types import TracebackType
+from types import MappingProxyType, TracebackType
 from typing import Self
 
 from mailrun.account import SmtpAccount
@@ -39,12 +39,21 @@ class SendReceipt:
         Addresses the server took responsibility for.
     reason_by_refused_recipient
         Addresses the server rejected, each with the reason it gave. Empty on a
-        clean send.
+        clean send. Read-only: the receipt is a record of what happened, and
+        `is_complete` is derived from it, so a caller who could write into the
+        mapping could change what the send appears to have done.
     """
 
     message_id: str
     accepted: tuple[str, ...]
-    reason_by_refused_recipient: dict[str, str]
+    reason_by_refused_recipient: Mapping[str, str]
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "reason_by_refused_recipient",
+            MappingProxyType(dict(self.reason_by_refused_recipient)),
+        )
 
     @property
     def is_complete(self) -> bool:
@@ -90,7 +99,7 @@ class Mailer:
     ) -> None:
         smtp, self._smtp = self._smtp, None
         if smtp is not None:
-            smtp.quit()
+            _hang_up(smtp)
 
     def send(self, message: Message) -> SendReceipt:
         """Check, assemble, and send one message.
@@ -103,12 +112,18 @@ class Mailer:
         ------
         BlockedAttachmentError, EncryptedArchiveError, MessageTooLargeError
             The provider would refuse the message.
-        MissingPasswordError
-            No password is stored for the account.
+        MissingPasswordError, InsecureCredentialsError, CredentialsError
+            No password is stored, the credentials file is readable by others, or
+            it is not readable JSON.
+        AuthenticationFailedError
+            The server rejected the password. Note this is a `MailrunError`, not
+            an `smtplib.SMTPException` -- authentication is the one session
+            failure this package translates, because "authentication failed" on
+            its own never tells the reader that an app password is what is wanted.
         RecipientRefusedError
             The server refused every recipient.
         smtplib.SMTPException
-            The session itself failed (authentication, connection, protocol).
+            The session itself failed (connection, protocol).
         """
         provider = self._account.provider
         check_attachments(message.attachments, provider=provider)
@@ -132,23 +147,25 @@ class Mailer:
         try:
             yield smtp
         finally:
-            smtp.quit()
+            _hang_up(smtp)
 
     def _connect(self) -> smtplib.SMTP:
+        """Open an authenticated session, or leave nothing behind trying.
+
+        Every exit between the socket opening and the login succeeding closes it.
+        The connection exists from the constructor onward, so any raise after
+        that point -- a server that dropped STARTTLS, an auth method neither side
+        offers, a disconnect mid-login -- would otherwise drop a connected socket
+        with nobody holding a reference to close it.
+        """
         provider = self._account.provider
         password = resolve_password(self._account)
-        if provider.security == "ssl":
-            smtp: smtplib.SMTP = smtplib.SMTP_SSL(
-                provider.smtp_host, provider.smtp_port, timeout=self._timeout_seconds
-            )
-        else:
-            smtp = smtplib.SMTP(
-                provider.smtp_host, provider.smtp_port, timeout=self._timeout_seconds
-            )
-            smtp.ehlo()
-            smtp.starttls()
-        smtp.ehlo()
+        smtp = self._open_socket()
         try:
+            if provider.security != "ssl":
+                smtp.ehlo()
+                smtp.starttls()
+            smtp.ehlo()
             smtp.login(self._account.username, password)
         except smtplib.SMTPAuthenticationError as err:
             smtp.close()
@@ -157,20 +174,52 @@ class Mailer:
                 f"{self._account.username} ({err.smtp_code} "
                 f"{_as_text(err.smtp_error)}). {provider.login_requirements}"
             ) from err
+        except BaseException:
+            smtp.close()
+            raise
         return smtp
+
+    def _open_socket(self) -> smtplib.SMTP:
+        provider = self._account.provider
+        if provider.security == "ssl":
+            return smtplib.SMTP_SSL(
+                provider.smtp_host, provider.smtp_port, timeout=self._timeout_seconds
+            )
+        return smtplib.SMTP(
+            provider.smtp_host, provider.smtp_port, timeout=self._timeout_seconds
+        )
+
+
+def _hang_up(smtp: smtplib.SMTP) -> None:
+    """End the session, without letting teardown outrank the caller's error.
+
+    `quit()` sends QUIT before it closes, so on a connection the server already
+    dropped it raises -- never reaching `close()`, leaking the socket, and, when
+    it runs from `__exit__`, replacing whatever the `with` body was raising. The
+    dropped connection is exactly when the caller most needs their own error.
+    """
+    try:
+        smtp.quit()
+    except smtplib.SMTPException:
+        smtp.close()
 
 
 def _advertised_size_limit(smtp: smtplib.SMTP) -> int | None:
     """The largest message this server says it accepts, from its EHLO reply.
 
     The server's own number beats the provider constant, which can only be as
-    fresh as the last time someone looked.
+    fresh as the last time someone looked. `None` means the server named no
+    limit -- either it did not advertise SIZE at all, or it advertised zero,
+    which RFC 1870 Sec.3 defines as "no fixed maximum message size is in force".
+    Reading that zero literally would refuse every message a limitless server
+    was happy to take.
     """
     advertised = smtp.esmtp_features.get("size")
     try:
-        return int(advertised)
+        limit_bytes = int(advertised)
     except (TypeError, ValueError):
         return None
+    return limit_bytes or None
 
 
 def _send_over(

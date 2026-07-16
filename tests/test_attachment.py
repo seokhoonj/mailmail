@@ -5,7 +5,12 @@ import zipfile
 
 import pytest
 
-from mailrun.attachment import Attachment, check_attachments, check_message_size
+from mailrun.attachment import (
+    _MAX_ARCHIVE_DEPTH,
+    Attachment,
+    check_attachments,
+    check_message_size,
+)
 from mailrun.errors import (
     AttachmentError,
     BlockedAttachmentError,
@@ -26,6 +31,23 @@ def write_zip(directory, name, member_names):
     with zipfile.ZipFile(path, "w") as archive:
         for member_name in member_names:
             archive.writestr(member_name, "payload")
+    return path
+
+
+def write_zip_of_files(directory, name, paths):
+    """A zip holding real files from disk, so a member can itself be an archive."""
+    path = directory / name
+    with zipfile.ZipFile(path, "w") as archive:
+        for member_path in paths:
+            archive.write(member_path, member_path.name)
+    return path
+
+
+def write_tar_of_files(directory, name, paths, mode="w"):
+    path = directory / name
+    with tarfile.open(path, mode) as archive:
+        for member_path in paths:
+            archive.add(member_path, arcname=member_path.name)
     return path
 
 
@@ -128,10 +150,16 @@ class TestBlockedFileTypes:
                 provider=GMAIL,
             )
 
-    def test_error_says_zipping_will_not_help(self, tmp_path):
+    def test_error_names_the_archives_that_will_not_help(self, tmp_path):
+        # It names .zip and .tar.gz specifically, and does not claim archives in
+        # general: .7z and .rar have no stdlib reader and are not looked inside,
+        # so "compressing never helps" would be a promise the code cannot keep.
         attachment = Attachment.from_path(write_file(tmp_path, "setup.exe"))
-        with pytest.raises(BlockedAttachmentError, match="inside archives"):
+        with pytest.raises(BlockedAttachmentError) as caught:
             check_attachments([attachment], provider=GMAIL)
+        message = str(caught.value)
+        assert ".zip" in message and ".tar.gz" in message
+        assert "inside archives" not in message
 
     def test_one_bad_attachment_condemns_the_whole_message(self, tmp_path):
         allowed = Attachment.from_path(write_file(tmp_path, "report.pdf"))
@@ -221,6 +249,135 @@ class TestArchiveContents:
     ):
         pretender = write_file(tmp_path, "broken.zip", b"not really a zip")
         check_attachments([Attachment.from_path(pretender)], provider=GMAIL)
+
+
+class TestNamesThatEvadeASuffixMatch:
+    """Names that are not `setup.exe` but arrive as one.
+
+    Every case here passed the check before it was written, and Gmail refuses
+    them -- the trailing-dot case was confirmed against the live server, which
+    answered `552 5.7.0 ... content presents a potential security issue`.
+    """
+
+    @pytest.mark.parametrize(
+        ("member_name", "why"),
+        [
+            ("setup.exe.",   "Windows drops the trailing dot when it saves"),
+            ("setup.exe ",   "Windows drops the trailing space when it saves"),
+            ("setup.exe..",  "several dots go the same way"),
+            ("setup.exe. ",  "a dot and a space together"),
+            ("SETUP.EXE.",   "case and padding at once"),
+        ],
+    )
+    def test_padded_executable_name_is_still_refused(self, tmp_path, member_name, why):
+        archive = write_zip(tmp_path, "bundle.zip", [member_name])
+        with pytest.raises(BlockedAttachmentError):
+            check_attachments([Attachment.from_path(archive)], provider=GMAIL)
+
+    def test_padding_does_not_make_an_ordinary_file_look_blocked(self, tmp_path):
+        archive = write_zip(tmp_path, "reports.zip", ["report.pdf.", "notes.txt "])
+        check_attachments([Attachment.from_path(archive)], provider=GMAIL)
+
+    def test_a_name_of_only_padding_is_not_blocked(self, tmp_path):
+        archive = write_zip(tmp_path, "odd.zip", ["..."])
+        check_attachments([Attachment.from_path(archive)], provider=GMAIL)
+
+
+class TestNestedArchives:
+    """Providers open an archive inside an archive; so does this.
+
+    Stopping at the first level let `outer.zip > inner.zip > setup.exe` through
+    the gate and into a bounce -- the exact failure the package exists to
+    prevent.
+    """
+
+    def test_executable_one_archive_down_is_refused(self, tmp_path):
+        inner = write_zip(tmp_path, "inner.zip", ["setup.exe"])
+        outer = write_zip_of_files(tmp_path, "outer.zip", [inner])
+        with pytest.raises(BlockedAttachmentError, match="setup.exe"):
+            check_attachments([Attachment.from_path(outer)], provider=GMAIL)
+
+    def test_executable_two_archives_down_is_refused(self, tmp_path):
+        inner = write_zip(tmp_path, "inner.zip", ["setup.exe"])
+        middle = write_zip_of_files(tmp_path, "middle.zip", [inner])
+        outer = write_zip_of_files(tmp_path, "outer.zip", [middle])
+        with pytest.raises(BlockedAttachmentError, match="setup.exe"):
+            check_attachments([Attachment.from_path(outer)], provider=GMAIL)
+
+    def test_tar_inside_a_zip_is_looked_inside(self, tmp_path):
+        inner = write_tar(tmp_path, "inner.tar", ["setup.exe"])
+        outer = write_zip_of_files(tmp_path, "outer.zip", [inner])
+        with pytest.raises(BlockedAttachmentError, match="setup.exe"):
+            check_attachments([Attachment.from_path(outer)], provider=GMAIL)
+
+    def test_zip_inside_a_tar_is_looked_inside(self, tmp_path):
+        inner = write_zip(tmp_path, "inner.zip", ["setup.exe"])
+        outer = write_tar_of_files(tmp_path, "outer.tar", [inner])
+        with pytest.raises(BlockedAttachmentError, match="setup.exe"):
+            check_attachments([Attachment.from_path(outer)], provider=GMAIL)
+
+    def test_clean_nested_archives_are_allowed(self, tmp_path):
+        inner = write_zip(tmp_path, "inner.zip", ["q1.pdf"])
+        outer = write_zip_of_files(tmp_path, "outer.zip", [inner])
+        check_attachments([Attachment.from_path(outer)], provider=GMAIL)
+
+    def test_a_nest_too_deep_to_scan_is_refused_rather_than_waved_through(
+        self, tmp_path
+    ):
+        # Refusing is the honest answer: the point of the check is that nothing
+        # unscanned reaches the server, so "too deep to look" cannot mean "fine".
+        archive = write_zip(tmp_path, "deep.zip", ["q1.pdf"])
+        for level in range(_MAX_ARCHIVE_DEPTH + 1):
+            archive = write_zip_of_files(tmp_path, f"wrap{level}.zip", [archive])
+        with pytest.raises(EncryptedArchiveError, match="deep"):
+            check_attachments([Attachment.from_path(archive)], provider=GMAIL)
+
+
+class TestArchiveNamesAreNotFilenames:
+    """A zip member name has none of a real filename's limits."""
+
+    def test_a_thousand_stacked_gz_suffixes_do_not_exhaust_the_stack(self, tmp_path):
+        # The filesystem caps a name at 255 bytes, so this is unreachable as a
+        # real file -- but a zip stores names up to 64 KB, and the peel used to
+        # recurse once per suffix.
+        archive = write_zip(tmp_path, "bundle.zip", ["payload" + ".gz" * 5000])
+        check_attachments([Attachment.from_path(archive)], provider=GMAIL)
+
+    def test_a_thousand_stacked_gz_over_an_executable_is_still_refused(self, tmp_path):
+        archive = write_zip(tmp_path, "bundle.zip", ["setup.exe" + ".gz" * 5000])
+        with pytest.raises(BlockedAttachmentError):
+            check_attachments([Attachment.from_path(archive)], provider=GMAIL)
+
+
+class TestUnreadableArchives:
+    def test_a_corrupt_tar_is_not_read_as_empty_and_therefore_clean(self, tmp_path):
+        # `except tarfile.TarError` was the whole family, so a tar that failed to
+        # read produced "no members" -- indistinguishable from "nothing blocked".
+        pretender = write_file(tmp_path, "broken.tar", b"not really a tar at all")
+        check_attachments([Attachment.from_path(pretender)], provider=GMAIL)
+
+    def test_tar_bz2_hiding_an_executable_is_refused(self, tmp_path):
+        archive = write_tar(tmp_path, "bundle.tar.bz2", ["setup.exe"], mode="w:bz2")
+        with pytest.raises(BlockedAttachmentError, match="setup.exe"):
+            check_attachments([Attachment.from_path(archive)], provider=GMAIL)
+
+    def test_tbz2_hiding_an_executable_is_refused(self, tmp_path):
+        archive = write_tar(tmp_path, "bundle.tbz2", ["setup.exe"], mode="w:bz2")
+        with pytest.raises(BlockedAttachmentError, match="setup.exe"):
+            check_attachments([Attachment.from_path(archive)], provider=GMAIL)
+
+    def test_txz_hiding_an_executable_is_refused(self, tmp_path):
+        archive = write_tar(tmp_path, "bundle.txz", ["setup.exe"], mode="w:xz")
+        with pytest.raises(BlockedAttachmentError, match="setup.exe"):
+            check_attachments([Attachment.from_path(archive)], provider=GMAIL)
+
+    def test_7z_is_not_looked_inside_and_does_not_pretend_to_be(self, tmp_path):
+        # A documented limit, pinned so nobody mistakes silence for protection:
+        # there is no stdlib reader for .7z, so an executable inside one reaches
+        # the server and is refused there. Refusing every .7z locally would be
+        # worse -- it would block the innocent ones the provider accepts.
+        sevenzip = write_file(tmp_path, "bundle.7z", b"7z\xbc\xaf\x27\x1c fake")
+        check_attachments([Attachment.from_path(sevenzip)], provider=GMAIL)
 
 
 class TestMessageSize:

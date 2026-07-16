@@ -54,12 +54,17 @@ class FakeSmtp:
         self.quit_count = 0
         self.close_count = 0
         self.rejects_login = False
+        self.starttls_raises = None
+        self.login_raises = None
+        self.quit_raises = None
         self.refusals = refusals or {}
 
     def ehlo(self):
         return 250, b"ok"
 
     def starttls(self):
+        if self.starttls_raises is not None:
+            raise self.starttls_raises
         self.started_tls = True
 
     def login(self, username, password):
@@ -68,6 +73,8 @@ class FakeSmtp:
             raise smtplib.SMTPAuthenticationError(
                 534, b"5.7.9 Application-specific password required.\n5.7.9 Learn more"
             )
+        if self.login_raises is not None:
+            raise self.login_raises
 
     def close(self):
         self.close_count += 1
@@ -80,6 +87,10 @@ class FakeSmtp:
 
     def quit(self):
         self.quit_count += 1
+        if self.quit_raises is not None:
+            # Like the real thing: QUIT goes out before close(), so a dead
+            # connection raises here and never reaches close().
+            raise self.quit_raises
 
 
 @pytest.fixture
@@ -206,6 +217,79 @@ class TestRejectedLogin:
         with pytest.raises(AuthenticationFailedError):
             Mailer(ACCOUNT).send(a_message())
         assert fake_smtp.sent == []
+
+
+class TestTheSocketIsAlwaysClosed:
+    """Every way out of a handshake closes what it opened.
+
+    Only the authentication path used to clean up, so a server that dropped
+    STARTTLS, or an auth method neither side offered, left a connected socket
+    with nobody holding it.
+    """
+
+    def test_starttls_failure_closes_the_socket(self, fake_smtp):
+        fake_smtp.starttls_raises = smtplib.SMTPNotSupportedError("no STARTTLS here")
+        with pytest.raises(smtplib.SMTPNotSupportedError):
+            Mailer(ACCOUNT).send(a_message())
+        assert fake_smtp.close_count == 1
+
+    def test_non_auth_login_failure_closes_the_socket(self, fake_smtp):
+        fake_smtp.login_raises = smtplib.SMTPNotSupportedError("no auth method")
+        with pytest.raises(smtplib.SMTPNotSupportedError):
+            Mailer(ACCOUNT).send(a_message())
+        assert fake_smtp.close_count == 1
+
+    def test_rejected_login_still_closes_the_socket(self, fake_smtp):
+        fake_smtp.rejects_login = True
+        with pytest.raises(AuthenticationFailedError):
+            Mailer(ACCOUNT).send(a_message())
+        assert fake_smtp.close_count == 1
+
+
+class TestHangingUpDoesNotOutrankTheCallersError:
+    """A dead connection must not eat the exception the caller needs to see.
+
+    `quit()` sends QUIT before it closes, so on a connection the server already
+    dropped it raises -- from inside `__exit__`, where it replaces whatever the
+    `with` body was raising, and without ever reaching `close()`.
+    """
+
+    def test_the_bodys_error_survives_a_failing_quit(self, fake_smtp):
+        fake_smtp.quit_raises = smtplib.SMTPServerDisconnected("connection is gone")
+        with pytest.raises(ValueError, match="the error the caller needs"), Mailer(
+            ACCOUNT
+        ):
+            raise ValueError("the error the caller needs to see")
+
+    def test_a_failing_quit_still_closes_the_socket(self, fake_smtp):
+        fake_smtp.quit_raises = smtplib.SMTPServerDisconnected("connection is gone")
+        with Mailer(ACCOUNT) as mailer:
+            mailer.send(a_message())
+        assert fake_smtp.close_count == 1
+
+    def test_a_failing_quit_does_not_surface_from_a_clean_bare_send(self, fake_smtp):
+        fake_smtp.quit_raises = smtplib.SMTPServerDisconnected("connection is gone")
+        receipt = Mailer(ACCOUNT).send(a_message())
+        assert receipt.is_complete
+
+
+class TestServerThatNamesNoSizeLimit:
+    """RFC 1870 Sec.3: a SIZE of zero means no fixed maximum is in force."""
+
+    def test_size_zero_is_read_as_no_limit_not_as_zero_bytes(self, fake_smtp):
+        fake_smtp.esmtp_features = {"size": "0"}
+        receipt = Mailer(ACCOUNT).send(a_message())
+        assert receipt.is_complete
+
+
+class TestReceiptIsAReadOnlyRecord:
+    def test_the_refusal_map_cannot_be_written_into(self, fake_smtp):
+        # is_complete is derived from this mapping, so a writable one lets a
+        # caller change what the send appears to have done.
+        receipt = Mailer(ACCOUNT).send(a_message())
+        with pytest.raises(TypeError):
+            receipt.reason_by_refused_recipient["typo@example.com"] = "550 nope"
+        assert receipt.is_complete
 
 
 class TestEnvelope:

@@ -39,9 +39,11 @@ from mailrun.errors import (
     BlockedAttachmentError,
     ConfigError,
     ContactCycleError,
+    ContactError,
     CredentialsError,
     EncryptedArchiveError,
     InsecureCredentialsError,
+    InvalidMessageError,
     MailrunError,
     MessageTooLargeError,
     MissingPasswordError,
@@ -66,9 +68,11 @@ __all__ = [
     "Config",
     "ConfigError",
     "ContactCycleError",
+    "ContactError",
     "CredentialsError",
     "EncryptedArchiveError",
     "InsecureCredentialsError",
+    "InvalidMessageError",
     "MailProvider",
     "Mailer",
     "MailrunError",
@@ -138,14 +142,23 @@ def send_mail(
 
     Raises
     ------
+    Every error below descends from `MailrunError`, so one `except MailrunError`
+    guards the whole send.
+
     ConfigError, UnknownAccountError
         The configuration is missing or does not define the account.
     UnknownContactError, ContactCycleError
         A recipient is neither an address nor a resolvable alias.
+    InvalidMessageError
+        Every recipient resolved to nobody, the subject is blank, or an address
+        contains a line break. Also a `ValueError`.
+    AttachmentError
+        An attachment path does not exist or is not a regular file.
     BlockedAttachmentError, EncryptedArchiveError, MessageTooLargeError
         The provider would reject the message; nothing was sent.
-    MissingPasswordError
-        No password is stored for the account.
+    MissingPasswordError, InsecureCredentialsError
+        No password is stored for the account, or the credentials file is
+        readable by someone other than its owner.
     AuthenticationFailedError
         The server rejected the password; the message says what it wants instead.
     RecipientRefusedError

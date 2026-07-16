@@ -171,11 +171,66 @@ class TestFilePermissions:
         with pytest.raises(InsecureCredentialsError):
             resolve_password(NAVER_ACCOUNT)
 
+    def test_password_is_never_on_disk_readable_by_others(self, credentials_path):
+        # The store used to be opened with O_TRUNC on the real path: O_CREAT
+        # applies its mode only to a *new* file, so writing into a store that had
+        # been loosened to 0644 put the password there at 0644 and tightened it
+        # only afterwards. Writing a fresh 0600 file and renaming closes that.
+        credentials_path.write_text("{}")
+        credentials_path.chmod(0o644)
+        store_password(NAVER_ACCOUNT, "app-password")
+        assert mode_of(credentials_path) == CREDENTIALS_FILE_MODE
+
+    def test_write_leaves_no_temporary_file_behind(self, credentials_path):
+        store_password(NAVER_ACCOUNT, "app-password")
+        leftovers = list(credentials_path.parent.glob("*.tmp"))
+        assert leftovers == []
+
     def test_parent_directory_is_created_when_absent(self, tmp_path, monkeypatch):
         nested = tmp_path / "fresh" / "mailrun" / "credentials.json"
         monkeypatch.setenv("MAILRUN_CREDENTIALS", str(nested))
         store_password(NAVER_ACCOUNT, "app-password")
         assert nested.exists()
+
+
+class TestWriteIsAllOrNothing:
+    """A half-written store is worse than no write at all.
+
+    The old write emptied the real file first, so a crash between the truncate
+    and the dump left an empty store -- saving one account's password destroyed
+    every other account's.
+    """
+
+    def test_a_failed_write_leaves_the_previous_store_intact(
+        self, credentials_path, monkeypatch
+    ):
+        store_password(NAVER_ACCOUNT, "naver-password")
+
+        def explode(*_args, **_kwargs):
+            raise OSError("disk full, mid-write")
+
+        monkeypatch.setattr("mailrun.credentials.json.dump", explode)
+        with pytest.raises(OSError):
+            store_password(GMAIL_ACCOUNT, "gmail-password")
+
+        # Reading is unaffected by the patched writer, so the store can be read
+        # back without undoing it -- undoing would also drop the fixture's
+        # redirect and send this at the operator's real credentials.
+        assert resolve_password(NAVER_ACCOUNT) == "naver-password"
+
+    def test_a_failed_write_leaves_no_temporary_file_behind(
+        self, credentials_path, monkeypatch
+    ):
+        store_password(NAVER_ACCOUNT, "naver-password")
+
+        def explode(*_args, **_kwargs):
+            raise OSError("disk full, mid-write")
+
+        monkeypatch.setattr("mailrun.credentials.json.dump", explode)
+        with pytest.raises(OSError):
+            store_password(GMAIL_ACCOUNT, "gmail-password")
+
+        assert list(credentials_path.parent.glob("*.tmp")) == []
 
 
 class TestDelete:

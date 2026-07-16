@@ -3,6 +3,7 @@
 import pytest
 
 from mailrun.attachment import Attachment
+from mailrun.errors import InvalidMessageError, MailrunError
 from mailrun.message import Message
 
 SENDER = "sender@example.com"
@@ -41,12 +42,60 @@ class TestRecipientNormalization:
         )
 
     def test_message_without_recipients_is_rejected(self):
-        with pytest.raises(ValueError, match="at least one recipient"):
+        with pytest.raises(InvalidMessageError, match="at least one recipient"):
             a_message(to=())
 
     def test_message_without_a_subject_is_rejected(self):
-        with pytest.raises(ValueError, match="subject"):
+        with pytest.raises(InvalidMessageError, match="subject"):
             a_message(subject="   ")
+
+
+class TestOneExceptGuardsTheWholeSend:
+    """errors.py promises every error descends from MailrunError. It must.
+
+    These two used to escape as a bare ValueError -- and the skill *instructs*
+    the caller to pass `cc=()`, so the shipped consumer walked at the one path
+    the promise did not cover.
+    """
+
+    def test_a_message_with_no_recipient_raises_a_mailrun_error(self):
+        with pytest.raises(MailrunError):
+            a_message(to=())
+
+    def test_a_message_with_no_subject_raises_a_mailrun_error(self):
+        with pytest.raises(MailrunError):
+            a_message(subject="")
+
+    def test_it_is_still_a_value_error_for_anyone_who_caught_that(self):
+        # Both, deliberately: a bad argument has always been a ValueError, and
+        # nobody who reasonably wrote `except ValueError` should be broken.
+        assert issubclass(InvalidMessageError, ValueError)
+        assert issubclass(InvalidMessageError, MailrunError)
+
+
+class TestAddressesWithLineBreaks:
+    """A line break in an address dies here, not on an open connection.
+
+    `to` and `cc` are checked for free when they become headers. `bcc` never
+    becomes one, so nothing looked at it until smtplib refused it -- with the
+    connection open and the login already spent, from a package whose whole claim
+    is that rejects land before it dials.
+    """
+
+    @pytest.mark.parametrize("field", ["to", "cc", "bcc"])
+    def test_a_line_break_in_any_recipient_field_is_refused(self, field):
+        crafted = "audit@example.com>\r\nRCPT TO:<attacker@example.net"
+        with pytest.raises(InvalidMessageError, match="line break"):
+            a_message(**{field: crafted})
+
+    def test_a_bare_newline_is_refused_too(self):
+        with pytest.raises(InvalidMessageError, match="line break"):
+            a_message(bcc="audit@example.com\nBcc: attacker@example.net")
+
+    def test_the_refusal_happens_before_any_mime_is_built(self):
+        # __post_init__, not to_mime: nothing should get as far as assembling.
+        with pytest.raises(InvalidMessageError):
+            Message(subject="s", body="b", to="a@example.com", bcc="b@example.com\r\n")
 
 
 class TestHeaders:

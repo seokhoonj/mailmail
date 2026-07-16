@@ -134,16 +134,22 @@ if not receipt.is_complete:
 
 패키지 예외는 이미 사용자가 읽을 수 있는 문장이다. 그대로 전달하고, 아래 조치만 덧붙인다.
 
-| 예외 | 뜻과 조치 |
+**규칙: `str(err)` 를 그대로 전달한다.** 각 예외는 무엇이 잘못됐고 어떻게 고치는지를 이미
+문장으로 들고 있다. 여기에 그 내용을 요약하거나 복사해두지 마라 — 한 사실이 두 집에 살면
+반드시 갈라지고, 실제로 갈라진 적이 있다. 아래 표는 예외별로 **덧붙일 행동**만 적는다.
+
+| 예외 | 덧붙일 행동 |
 |---|---|
-| `MissingPasswordError` | 자격증명 파일에 비밀번호가 없다. 앱 비밀번호를 발급받아 `store_password`로 한 번 넣어야 한다. **비밀번호를 대화에 붙여넣게 하지 마라** — 본인 터미널에서 `getpass`로 입력하는 명령을 안내한다(README 참조). 한 번 넣으면 다시 물어볼 일이 없다. |
-| `InsecureCredentialsError` | 자격증명 파일이 남에게도 읽히는 권한이다. 예외에 `chmod 600` 명령이 그대로 적혀 있으니 전달한다. |
-| `BlockedAttachmentError` | 그 파일 형식은 메일 서비스가 거부한다. 압축해도 소용없다(압축 안까지 검사한다). 링크 공유를 제안한다. |
-| `EncryptedArchiveError` | 비밀번호 걸린 압축은 스캔이 불가능해서 거부된다. 비밀번호를 풀거나 링크로 보낸다. |
-| `MessageTooLargeError` | 예외 메시지에 원본 파일 합계 상한이 적혀 있다. 그 숫자를 그대로 전한다. |
-| `UnknownContactError` | 별칭이 주소록에 없다. 예외가 아는 별칭을 나열하므로 그중에서 고르게 하거나 주소를 직접 받는다. |
-| `RecipientRefusedError` | 서버가 전원 거부 — 아무것도 안 갔다. 주소 오타를 먼저 의심한다. |
-| `AuthenticationFailedError` | 서버가 비밀번호를 거부했다. **예외 메시지에 해당 provider가 요구하는 설정이 이미 다 적혀 있으니 그대로 전달한다** — 여기에 따로 적어두지 않는다(패키지가 저작하고 skill은 나르기만 한다). |
+| `MissingPasswordError` | **비밀번호를 대화에 붙여넣게 하지 마라.** 본인 터미널에서 `getpass`로 입력하는 명령을 안내한다(README 참조). 한 번 넣으면 다시 물어볼 일이 없다. |
+| `InsecureCredentialsError` | 없음 — 예외에 `chmod 600` 명령이 그대로 들어 있다. |
+| `BlockedAttachmentError` | 링크 공유를 제안한다. |
+| `EncryptedArchiveError` | 압축 비밀번호를 풀거나 링크로 보낼지 묻는다. |
+| `MessageTooLargeError` | 첨부를 줄일지 묻는다. |
+| `UnknownContactError` | 예외가 아는 별칭을 나열하므로, 그중에서 고르게 하거나 주소를 직접 받는다. |
+| `ContactCycleError` | 없음 — 예외가 순환 경로를 그려준다. |
+| `InvalidMessageError` | 수신자나 제목이 비었다. 사용자에게 받아서 다시 조립한다. |
+| `RecipientRefusedError` | 주소 오타를 먼저 의심한다. |
+| `AuthenticationFailedError` | 없음 — 예외에 해당 provider의 요구사항이 전부 들어 있다. |
 
 ## 첫 설정
 

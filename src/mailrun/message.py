@@ -10,6 +10,7 @@ from email.message import EmailMessage
 from email.utils import formatdate, make_msgid
 
 from mailrun.attachment import Attachment
+from mailrun.errors import InvalidMessageError
 
 __all__ = ["Message"]
 
@@ -51,9 +52,19 @@ class Message:
         object.__setattr__(self, "bcc", _as_address_tuple(self.bcc))
         object.__setattr__(self, "attachments", tuple(self.attachments))
         if not self.recipients:
-            raise ValueError("a message needs at least one recipient")
+            raise InvalidMessageError("a message needs at least one recipient")
         if not self.subject.strip():
-            raise ValueError("a message needs a subject")
+            raise InvalidMessageError("a message needs a subject")
+        for address in self.recipients:
+            if "\r" in address or "\n" in address:
+                # to and cc get this for free when they are written as headers,
+                # and bcc -- which never becomes a header -- would otherwise not
+                # be caught until smtplib refused it, with the connection open
+                # and the login already spent.
+                raise InvalidMessageError(
+                    f"a line break in an address is not something any server "
+                    f"will take: {address!r}"
+                )
 
     @property
     def recipients(self) -> tuple[str, ...]:

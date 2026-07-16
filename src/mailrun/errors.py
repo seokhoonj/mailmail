@@ -10,9 +10,11 @@ __all__ = [
     "BlockedAttachmentError",
     "ConfigError",
     "ContactCycleError",
+    "ContactError",
     "CredentialsError",
     "EncryptedArchiveError",
     "InsecureCredentialsError",
+    "InvalidMessageError",
     "MailrunError",
     "MessageTooLargeError",
     "MissingPasswordError",
@@ -39,12 +41,26 @@ class UnknownProviderError(ConfigError):
     """An account names a mail provider mailrun does not know how to reach."""
 
 
-class UnknownContactError(MailrunError):
+class ContactError(MailrunError):
+    """Base class for address-book entries that cannot be resolved."""
+
+
+class UnknownContactError(ContactError):
     """A recipient is neither an email address nor a known address-book alias."""
 
 
-class ContactCycleError(MailrunError):
+class ContactCycleError(ContactError):
     """Address-book aliases refer to each other in a loop."""
+
+
+class InvalidMessageError(MailrunError, ValueError):
+    """The message is not sendable as given: no recipient, or no subject.
+
+    Also a `ValueError`, which is what a bad argument has always been in Python
+    and what callers already catch. Inheriting both keeps the promise at the top
+    of this file true -- that one `except MailrunError` guards a whole send --
+    without breaking anyone who reasonably wrote `except ValueError`.
+    """
 
 
 class AttachmentError(MailrunError):
