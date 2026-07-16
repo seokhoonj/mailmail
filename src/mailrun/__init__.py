@@ -4,8 +4,7 @@ The one-liner:
 
     from mailrun import send_mail
 
-    send_mail(to="lead", subject="Weekly report", body="Attached, as discussed.",
-              attachments=["report.xlsx"])
+    send_mail(to="lead", subject="Hello", body="Hi.")
 
 `to` takes addresses, address-book aliases, or both, and falls back to the
 configured default when not mentioned. Anything the provider would reject -- a

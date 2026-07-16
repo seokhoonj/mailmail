@@ -110,8 +110,8 @@ receipt = send_mail(
     account     = "naver",
     to          = ["lead", "reviewer"],   # 별칭은 주소록에서 (1단계에서 읽은 것)
     cc          = (),                     # 기본 참조를 끈다; 생략하면 들어간다
-    subject     = "주간 보고",
-    body        = "첨부 확인 부탁드립니다.",
+    subject     = "Hello",                # 실제 제목·본문은 사용자 요청대로
+    body        = "Hi.",
     attachments = ["/path/to/report.xlsx"],
 )
 print("message-id:", receipt.message_id)

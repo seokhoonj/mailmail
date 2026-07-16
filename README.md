@@ -95,15 +95,21 @@ ssh가 개인키에 대해 하는 것과 같다. `chmod 600`으로 고치라고 
 ```python
 from mailrun import send_mail
 
+send_mail(to="lead", subject="Hello", body="Hi.")
+```
+
+`to`에는 주소, 별칭, 또는 둘을 섞어서 넣는다. 첨부를 붙이면:
+
+```python
 send_mail(
-    to          = "lead",                    # 주소, 별칭, 또는 섞어서
-    subject     = "주간 보고",
-    body        = "첨부 확인 부탁드립니다.",
+    to          = "lead",
+    subject     = "Hello",
+    body        = "Hi. See the attached file.",
     attachments = ["report.xlsx"],
 )
 ```
 
-계정 지정, HTML 본문, 참조:
+계정 지정, HTML 본문, 참조까지 쓰면:
 
 ```python
 receipt = send_mail(
@@ -111,14 +117,27 @@ receipt = send_mail(
     to      = ["lead", "analyst@example.com"],
     cc      = "team",
     bcc     = "audit@example.com",
-    subject = "월간 마감",
-    body    = "HTML을 못 읽는 클라이언트가 보는 대체 본문.",
-    html    = "<p>표와 <b>서식</b>이 있는 본문.</p>",
+    subject = "Hello",
+    body    = "Hi. This is the plain text version.",
+    html    = "<p>Hi. This is the <b>HTML</b> version.</p>",
 )
 
 if not receipt.is_complete:
     print(receipt.reason_by_refused_recipient)
 ```
+
+### 수신자 기본값
+
+`[defaults]`에 `to`/`cc`를 적어두면 **인자를 안 넘겼을 때** 그게 쓰인다.
+
+```python
+send_mail(subject="Hello", body="Hi.")            # 기본 수신자·참조로
+send_mail(to="me", subject="Hello", body="Hi.")   # 참조는 여전히 기본값!
+send_mail(to="me", cc=(), subject="Hello", body="Hi.")   # 참조 없음
+```
+
+`None`(안 적음)과 `()`(아무도 없음)은 다르다. 이 구분이 없으면 기본 참조를 끌 방법이
+없어진다 — 나한테만 보내는 메모에도 참조가 따라붙는다. 두 번째 줄이 그 함정이다.
 
 여러 통을 보낼 땐 연결을 재사용한다:
 
