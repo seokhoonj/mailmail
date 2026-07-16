@@ -110,6 +110,17 @@ class TestHeaders:
         mime = a_message(cc="analyst@example.com").to_mime(sender=SENDER)
         assert mime["Cc"] == "analyst@example.com"
 
+    def test_a_message_addressed_only_to_a_cc_has_no_to_header(self):
+        # Not an empty one: `To:` with nothing after it is a malformed header,
+        # and some filters read it as a spam signal.
+        mime = a_message(to=(), cc="analyst@example.com").to_mime(sender=SENDER)
+        assert mime["To"] is None
+        assert mime["Cc"] == "analyst@example.com"
+
+    def test_a_message_with_no_cc_has_no_cc_header(self):
+        mime = a_message(cc=()).to_mime(sender=SENDER)
+        assert mime["Cc"] is None
+
     def test_bcc_is_never_written_as_a_header(self):
         # Writing it would show every blind recipient to all the others.
         message = a_message(bcc="audit@example.com")

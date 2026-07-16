@@ -64,7 +64,7 @@ team      = ["me", "lead"]
 from getpass import getpass
 from mailrun import load_config, store_password
 
-account = load_config().account("naver")
+account = load_config().resolve_account("naver")
 store_password(account, getpass(f"{account.username} 앱 비밀번호: "))
 ```
 
@@ -161,7 +161,7 @@ send_mail(to="me", cc=(), subject="Weekly report", body=body)  # 참조 없음
 from mailrun import Mailer, Message, load_config
 
 config = load_config()
-with Mailer(config.account("naver")) as mailer:
+with Mailer(config.resolve_account("naver")) as mailer:
     for row in rows:
         mailer.send(Message(subject=row.subject, body=row.body, to=row.address))
 ```

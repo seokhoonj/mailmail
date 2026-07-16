@@ -85,7 +85,11 @@ class Message:
         """
         mime = EmailMessage()
         mime["From"] = sender
-        mime["To"] = ", ".join(self.to)
+        # Both conditional: a message addressed only to a cc has no To
+        # recipients, and an empty `To:` header is not the way to say that --
+        # it is a malformed header that some filters read as a spam signal.
+        if self.to:
+            mime["To"] = ", ".join(self.to)
         if self.cc:
             mime["Cc"] = ", ".join(self.cc)
         # Bcc is deliberately absent: writing the header would show every blind

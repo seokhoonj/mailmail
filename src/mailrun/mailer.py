@@ -5,10 +5,12 @@ Used as a context manager it holds that connection open across sends, which is
 what makes a batch cheap; used bare, each `send` opens and closes its own.
 """
 
+import io
 import smtplib
 from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass
+from email.generator import BytesGenerator
 from email.message import EmailMessage
 from types import MappingProxyType, TracebackType
 from typing import Self
@@ -128,14 +130,16 @@ class Mailer:
         provider = self._account.provider
         check_attachments(message.attachments, provider=provider)
         mime = message.to_mime(sender=self._account.username)
-        encoded_bytes = len(mime.as_bytes())
-        check_message_size(encoded_bytes, limit_bytes=provider.max_message_bytes)
+        payload = _as_wire_bytes(mime)
+        check_message_size(len(payload), limit_bytes=provider.max_message_bytes)
         with self._session() as smtp:
             advertised_limit = _advertised_size_limit(smtp)
             if advertised_limit is not None:
-                check_message_size(encoded_bytes, limit_bytes=advertised_limit)
-            reason_by_refused = _send_over(smtp, mime, message.recipients)
-        return _as_receipt(mime, message.recipients, reason_by_refused)
+                check_message_size(len(payload), limit_bytes=advertised_limit)
+            reason_by_refused_recipient = _send_over(
+                smtp, payload, sender=str(mime["From"]), recipients=message.recipients
+            )
+        return _as_receipt(mime, message.recipients, reason_by_refused_recipient)
 
     @contextmanager
     def _session(self) -> Iterator[smtplib.SMTP]:
@@ -222,18 +226,41 @@ def _advertised_size_limit(smtp: smtplib.SMTP) -> int | None:
     return limit_bytes or None
 
 
+def _as_wire_bytes(mime: EmailMessage) -> bytes:
+    """The message exactly as the server will receive it.
+
+    SMTP ends every line with CRLF, and `EmailMessage.as_bytes()` does not -- it
+    uses the platform's separator, which is one byte shorter per line. On a 20 MB
+    attachment that is a 1.3% understatement, which matters because this is what
+    the size gate weighs: measuring the shorter form would pass a message the
+    server then refuses for being too large, which is the one outcome the gate
+    exists to prevent.
+
+    Flattening once here rather than measuring with `as_bytes()` and letting
+    `send_message` flatten again also halves the work: a 25 MB attachment costs
+    about a second and 100 MB of peak memory per pass.
+    """
+    with io.BytesIO() as buffer:
+        generator = BytesGenerator(buffer, policy=mime.policy.clone(linesep="\r\n"))
+        generator.flatten(mime, linesep="\r\n")
+        return buffer.getvalue()
+
+
 def _send_over(
-    smtp: smtplib.SMTP, mime: EmailMessage, recipients: tuple[str, ...]
+    smtp: smtplib.SMTP,
+    payload: bytes,
+    *,
+    sender: str,
+    recipients: tuple[str, ...],
 ) -> dict[str, str]:
     """Hand the message to the server; report per-recipient refusals.
 
-    Recipients are passed explicitly rather than left to be read off the headers,
-    which is what delivers bcc addresses without naming them in the message.
+    Takes the already-flattened bytes, and the recipients explicitly rather than
+    off the headers -- which is what delivers bcc addresses without naming them
+    in the message.
     """
     try:
-        refused = smtp.send_message(
-            mime, from_addr=mime["From"], to_addrs=list(recipients)
-        )
+        refused = smtp.sendmail(sender, list(recipients), payload)
     except smtplib.SMTPRecipientsRefused as err:
         refused_all = ", ".join(sorted(err.recipients))
         raise RecipientRefusedError(
@@ -259,12 +286,17 @@ def _as_text(server_reply: bytes | str) -> str:
 
 
 def _as_receipt(
-    mime: EmailMessage, recipients: tuple[str, ...], reason_by_refused: dict[str, str]
+    mime: EmailMessage,
+    recipients: tuple[str, ...],
+    reason_by_refused_recipient: dict[str, str],
 ) -> SendReceipt:
+    accepted = tuple(
+        address
+        for address in recipients
+        if address not in reason_by_refused_recipient
+    )
     return SendReceipt(
         message_id                  = str(mime["Message-ID"]),
-        accepted                    = tuple(
-            address for address in recipients if address not in reason_by_refused
-        ),
-        reason_by_refused_recipient = reason_by_refused,
+        accepted                    = accepted,
+        reason_by_refused_recipient = reason_by_refused_recipient,
     )

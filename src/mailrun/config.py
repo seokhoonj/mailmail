@@ -53,7 +53,7 @@ class Config:
     default_cc: tuple[str, ...] = ()
     default_bcc: tuple[str, ...] = ()
 
-    def account(self, name: str | None = None) -> SmtpAccount:
+    def resolve_account(self, name: str | None = None) -> SmtpAccount:
         """Look up an account by name, or the default when `name` is None.
 
         Raises
@@ -158,7 +158,7 @@ def _as_recipients(
     )
 
 
-def _as_account(name: str, table: Any, *, path: Path) -> SmtpAccount:
+def _as_account(name: str, table: object, *, path: Path) -> SmtpAccount:
     if not isinstance(table, dict):
         raise ConfigError(f"{path}: [accounts.{name}] must be a table")
     for key in ("provider", "username"):
@@ -180,7 +180,7 @@ def _as_account(name: str, table: Any, *, path: Path) -> SmtpAccount:
     )
 
 
-def _as_address_book(table: Any, *, path: Path) -> AddressBook:
+def _as_address_book(table: object, *, path: Path) -> AddressBook:
     if not isinstance(table, dict):
         raise ConfigError(f"{path}: [contacts] must be a table")
     address_book: dict[str, tuple[str, ...]] = {}
@@ -190,7 +190,7 @@ def _as_address_book(table: Any, *, path: Path) -> AddressBook:
         elif isinstance(entry, list) and all(isinstance(one, str) for one in entry):
             address_book[alias] = tuple(entry)
         elif isinstance(entry, dict):
-            raise ConfigError(_as_dotted_key_advice(alias, entry, path=path))
+            raise ConfigError(_dotted_key_advice(alias, entry, path=path))
         else:
             raise ConfigError(
                 f"{path}: contact {alias!r} must be a string or a list of "
@@ -199,7 +199,7 @@ def _as_address_book(table: Any, *, path: Path) -> AddressBook:
     return address_book
 
 
-def _as_dotted_key_advice(alias: str, nested: dict[str, Any], *, path: Path) -> str:
+def _dotted_key_advice(alias: str, nested: dict[str, Any], *, path: Path) -> str:
     """Explain the dotted-key trap rather than just reporting the wrong type.
 
     An alias with a dot in it -- `jane.doe = "..."` -- is not a key named

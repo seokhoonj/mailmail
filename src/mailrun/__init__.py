@@ -165,7 +165,7 @@ def send_mail(
         The server refused every recipient.
     """
     config = config if config is not None else load_config()
-    smtp_account = config.account(account)
+    smtp_account = config.resolve_account(account)
     message = Message(
         subject     = subject,
         body        = body,

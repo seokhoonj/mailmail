@@ -1,8 +1,8 @@
 """Sending, against a fake SMTP server -- nothing leaves the machine.
 
-The real client is replaced at `mailrun.mailer.smtplib`, so these tests exercise
-the whole path from `Message` down to the exact `send_message` call the server
-would see, deterministically and offline.
+The real client is replaced at `mailrun.mailer.smtplib` (see conftest), so these
+tests exercise the whole path from `Message` down to the exact bytes the server
+would be handed, deterministically and offline.
 """
 
 import smtplib
@@ -18,11 +18,18 @@ from mailrun.errors import (
     MessageTooLargeError,
     RecipientRefusedError,
 )
-from mailrun.mailer import Mailer
+from mailrun.mailer import Mailer, _as_wire_bytes
 from mailrun.message import Message
 from mailrun.provider import GMAIL, MailProvider
 
 ACCOUNT = SmtpAccount(name="gmail", username="sender@example.com", provider=GMAIL)
+
+
+@pytest.fixture(autouse=True)
+def _password_on_file(fake_smtp):
+    """Every test here sends, and sending needs a password stored."""
+    store_password(ACCOUNT, "app-pw")
+
 
 # A real provider that happens to accept almost nothing, so the size gate can be
 # tripped by an ordinary message instead of by a 35 MB fixture or a patched
@@ -39,80 +46,6 @@ TINY_LIMIT_PROVIDER = MailProvider(
 TINY_LIMIT_ACCOUNT = SmtpAccount(
     name="gmail", username="sender@example.com", provider=TINY_LIMIT_PROVIDER
 )
-
-
-class FakeSmtp:
-    """Records what a real server would have been told."""
-
-    def __init__(self, *, refusals=None, advertised_size=35_882_577):
-        self.esmtp_features = (
-            {"size": str(advertised_size)} if advertised_size is not None else {}
-        )
-        self.sent = []
-        self.logins = []
-        self.started_tls = False
-        self.quit_count = 0
-        self.close_count = 0
-        self.rejects_login = False
-        self.starttls_raises = None
-        self.login_raises = None
-        self.quit_raises = None
-        self.refusals = refusals or {}
-
-    def ehlo(self):
-        return 250, b"ok"
-
-    def starttls(self):
-        if self.starttls_raises is not None:
-            raise self.starttls_raises
-        self.started_tls = True
-
-    def login(self, username, password):
-        self.logins.append((username, password))
-        if self.rejects_login:
-            raise smtplib.SMTPAuthenticationError(
-                534, b"5.7.9 Application-specific password required.\n5.7.9 Learn more"
-            )
-        if self.login_raises is not None:
-            raise self.login_raises
-
-    def close(self):
-        self.close_count += 1
-
-    def send_message(self, mime, from_addr, to_addrs):
-        self.sent.append({"mime": mime, "from": from_addr, "to": list(to_addrs)})
-        if self.refusals and set(self.refusals) >= set(to_addrs):
-            raise smtplib.SMTPRecipientsRefused(self.refusals)
-        return dict(self.refusals)
-
-    def quit(self):
-        self.quit_count += 1
-        if self.quit_raises is not None:
-            # Like the real thing: QUIT goes out before close(), so a dead
-            # connection raises here and never reaches close().
-            raise self.quit_raises
-
-
-@pytest.fixture
-def fake_smtp(monkeypatch, tmp_path):
-    """Install one FakeSmtp behind smtplib.SMTP and hand it back.
-
-    The credentials file is redirected into tmp_path, so the tests neither read
-    nor write the real one.
-    """
-    server = FakeSmtp()
-    installed = []
-
-    def fake_smtp_class(host, port, timeout):
-        installed.append({"host": host, "port": port, "timeout": timeout})
-        return server
-
-    monkeypatch.setattr("mailrun.mailer.smtplib.SMTP", fake_smtp_class)
-    monkeypatch.setenv("MAILRUN_CREDENTIALS", str(tmp_path / "credentials.json"))
-    monkeypatch.delenv("MAILRUN_PASSWORD", raising=False)
-    store_password(ACCOUNT, "app-pw")
-    server.connections = installed
-    return server
 
 
 def a_message(**overrides):
@@ -216,7 +149,7 @@ class TestRejectedLogin:
         fake_smtp.rejects_login = True
         with pytest.raises(AuthenticationFailedError):
             Mailer(ACCOUNT).send(a_message())
-        assert fake_smtp.sent == []
+        assert fake_smtp.sent_messages == []
 
 
 class TestTheSocketIsAlwaysClosed:
@@ -292,14 +225,46 @@ class TestReceiptIsAReadOnlyRecord:
         assert receipt.is_complete
 
 
+class TestWhatIsWeighedIsWhatIsSent:
+    """The size gate must weigh the bytes the server receives, not a shorter form.
+
+    SMTP ends every line with CRLF; `EmailMessage.as_bytes()` does not. Measuring
+    with `as_bytes()` understated a 20 MB message by 1.3% -- enough that a message
+    inside the gate could still be refused by the server for being too large,
+    which is the one outcome the gate exists to prevent.
+    """
+
+    def test_the_message_goes_out_with_crlf_line_endings(self, fake_smtp):
+        Mailer(ACCOUNT).send(a_message(body="line one\nline two"))
+        payload = fake_smtp.last_payload
+        assert b"\r\n" in payload
+        assert payload.replace(b"\r\n", b"") .count(b"\n") == 0
+
+    def test_the_sent_payload_is_longer_than_its_own_lf_form(self, fake_smtp):
+        # The gate weighs this payload. Had it weighed the LF form -- which is
+        # what as_bytes() produces -- it would have understated by exactly the
+        # number of lines, and let through a message the server counts as bigger.
+        Mailer(ACCOUNT).send(a_message(body="\n".join(["line"] * 100)))
+        payload = fake_smtp.last_payload
+        lf_form = payload.replace(b"\r\n", b"\n")
+        assert len(payload) > len(lf_form)
+
+    def test_the_wire_form_is_larger_than_as_bytes_and_that_is_the_point(self):
+        # If these ever match, the gate could go back to as_bytes() -- but they
+        # do not, one byte per line.
+        many_lines = a_message(body="\n".join(["line"] * 100))
+        mime = many_lines.to_mime(sender="me@example.com")
+        assert len(_as_wire_bytes(mime)) > len(mime.as_bytes())
+
+
 class TestEnvelope:
     def test_bcc_reaches_the_server_without_appearing_in_the_message(self, fake_smtp):
         Mailer(ACCOUNT).send(
             a_message(to="lead@example.com", bcc="audit@example.com")
         )
-        sent = fake_smtp.sent[0]
+        sent = fake_smtp.sent_messages[0]
         assert "audit@example.com" in sent["to"]
-        assert "audit@example.com" not in sent["mime"].as_string()
+        assert "audit@example.com" not in sent["payload"].decode()
 
     def test_envelope_carries_to_cc_and_bcc_alike(self, fake_smtp):
         Mailer(ACCOUNT).send(
@@ -309,7 +274,7 @@ class TestEnvelope:
                 bcc="audit@example.com",
             )
         )
-        assert fake_smtp.sent[0]["to"] == [
+        assert fake_smtp.sent_messages[0]["to"] == [
             "lead@example.com",
             "analyst@example.com",
             "audit@example.com",
@@ -317,7 +282,7 @@ class TestEnvelope:
 
     def test_envelope_sender_is_the_account(self, fake_smtp):
         Mailer(ACCOUNT).send(a_message())
-        assert fake_smtp.sent[0]["from"] == "sender@example.com"
+        assert fake_smtp.sent_messages[0]["from"] == "sender@example.com"
 
 
 class TestReceipt:
@@ -375,7 +340,7 @@ class TestServerAdvertisedLimit:
         fake_smtp.esmtp_features = {"size": "10"}  # server accepts 10 bytes
         with pytest.raises(MessageTooLargeError):
             Mailer(ACCOUNT).send(a_message())
-        assert fake_smtp.sent == []
+        assert fake_smtp.sent_messages == []
 
     def test_server_that_advertises_no_size_falls_back_to_the_constant(
         self, fake_smtp

@@ -42,16 +42,16 @@ class TestAccounts:
 
     def test_account_defaults_to_the_named_default(self, tmp_path):
         config = load_config(write_config(tmp_path, TWO_ACCOUNT_CONFIG))
-        assert config.account().name == "naver"
+        assert config.resolve_account().name == "naver"
 
     def test_account_can_be_asked_for_by_name(self, tmp_path):
         config = load_config(write_config(tmp_path, TWO_ACCOUNT_CONFIG))
-        assert config.account("gmail").username == "me@gmail.com"
+        assert config.resolve_account("gmail").username == "me@gmail.com"
 
     def test_unknown_account_names_the_configured_ones(self, tmp_path):
         config = load_config(write_config(tmp_path, TWO_ACCOUNT_CONFIG))
         with pytest.raises(UnknownAccountError) as caught:
-            config.account("outlook")
+            config.resolve_account("outlook")
         assert "gmail" in str(caught.value)
 
     def test_lone_account_needs_no_default_declared(self, tmp_path):
@@ -59,7 +59,7 @@ class TestAccounts:
             tmp_path,
             '[accounts.naver]\nprovider = "naver"\nusername = "me@naver.com"\n',
         )
-        assert load_config(path).account().name == "naver"
+        assert load_config(path).resolve_account().name == "naver"
 
     def test_several_accounts_without_a_default_is_refused_rather_than_guessed(
         self, tmp_path
