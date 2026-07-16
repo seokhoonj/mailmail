@@ -1,0 +1,221 @@
+"""Opening an authenticated SMTP session and putting a message on the wire.
+
+`Mailer` is the one stateful object in the package: it owns a live connection.
+Used as a context manager it holds that connection open across sends, which is
+what makes a batch cheap; used bare, each `send` opens and closes its own.
+"""
+
+import smtplib
+from collections.abc import Iterator
+from contextlib import contextmanager
+from dataclasses import dataclass
+from email.message import EmailMessage
+from types import TracebackType
+from typing import Self
+
+from mailrun.account import SmtpAccount
+from mailrun.attachment import check_attachments, check_message_size
+from mailrun.credentials import resolve_password
+from mailrun.errors import AuthenticationFailedError, RecipientRefusedError
+from mailrun.message import Message
+
+__all__ = ["DEFAULT_TIMEOUT_SECONDS", "Mailer", "SendReceipt"]
+
+DEFAULT_TIMEOUT_SECONDS = 30.0
+
+
+@dataclass(frozen=True, slots=True)
+class SendReceipt:
+    """What the server did with a message.
+
+    A send can succeed for some recipients and fail for others, so this reports
+    both rather than collapsing the two into a bare success.
+
+    Attributes
+    ----------
+    message_id
+        The `Message-ID` header, for finding the mail again later.
+    accepted
+        Addresses the server took responsibility for.
+    reason_by_refused_recipient
+        Addresses the server rejected, each with the reason it gave. Empty on a
+        clean send.
+    """
+
+    message_id: str
+    accepted: tuple[str, ...]
+    reason_by_refused_recipient: dict[str, str]
+
+    @property
+    def is_complete(self) -> bool:
+        """Whether every recipient was accepted."""
+        return not self.reason_by_refused_recipient
+
+
+class Mailer:
+    """Sends messages as one account.
+
+    Construct it with an account and apply it to messages:
+
+        with Mailer(account) as mailer:
+            mailer.send(message)
+
+    Outside a `with` block `send` still works; it just pays for a fresh
+    connection each time.
+    """
+
+    def __init__(
+        self, account: SmtpAccount, *, timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS
+    ) -> None:
+        self._account = account
+        self._timeout_seconds = timeout_seconds
+        self._smtp: smtplib.SMTP | None = None
+
+    def __repr__(self) -> str:
+        return (
+            f"{type(self).__name__}(account={self._account.name!r}, "
+            f"username={self._account.username!r}, "
+            f"connected={self._smtp is not None})"
+        )
+
+    def __enter__(self) -> Self:
+        self._smtp = self._connect()
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
+        smtp, self._smtp = self._smtp, None
+        if smtp is not None:
+            smtp.quit()
+
+    def send(self, message: Message) -> SendReceipt:
+        """Check, assemble, and send one message.
+
+        Everything the provider would reject is caught here, before the
+        connection is opened, so a bad attachment surfaces as an exception at the
+        call site rather than as a bounce ten minutes later.
+
+        Raises
+        ------
+        BlockedAttachmentError, EncryptedArchiveError, MessageTooLargeError
+            The provider would refuse the message.
+        MissingPasswordError
+            No password is stored for the account.
+        RecipientRefusedError
+            The server refused every recipient.
+        smtplib.SMTPException
+            The session itself failed (authentication, connection, protocol).
+        """
+        provider = self._account.provider
+        check_attachments(message.attachments, provider=provider)
+        mime = message.to_mime(sender=self._account.username)
+        encoded_bytes = len(mime.as_bytes())
+        check_message_size(encoded_bytes, limit_bytes=provider.max_message_bytes)
+        with self._session() as smtp:
+            advertised_limit = _advertised_size_limit(smtp)
+            if advertised_limit is not None:
+                check_message_size(encoded_bytes, limit_bytes=advertised_limit)
+            reason_by_refused = _send_over(smtp, mime, message.recipients)
+        return _as_receipt(mime, message.recipients, reason_by_refused)
+
+    @contextmanager
+    def _session(self) -> Iterator[smtplib.SMTP]:
+        """The open connection, or a throwaway one when used outside a `with`."""
+        if self._smtp is not None:
+            yield self._smtp
+            return
+        smtp = self._connect()
+        try:
+            yield smtp
+        finally:
+            smtp.quit()
+
+    def _connect(self) -> smtplib.SMTP:
+        provider = self._account.provider
+        password = resolve_password(self._account)
+        if provider.security == "ssl":
+            smtp: smtplib.SMTP = smtplib.SMTP_SSL(
+                provider.smtp_host, provider.smtp_port, timeout=self._timeout_seconds
+            )
+        else:
+            smtp = smtplib.SMTP(
+                provider.smtp_host, provider.smtp_port, timeout=self._timeout_seconds
+            )
+            smtp.ehlo()
+            smtp.starttls()
+        smtp.ehlo()
+        try:
+            smtp.login(self._account.username, password)
+        except smtplib.SMTPAuthenticationError as err:
+            smtp.close()
+            raise AuthenticationFailedError(
+                f"{provider.name} rejected the password for "
+                f"{self._account.username} ({err.smtp_code} "
+                f"{_as_text(err.smtp_error)}). {provider.login_requirements}"
+            ) from err
+        return smtp
+
+
+def _advertised_size_limit(smtp: smtplib.SMTP) -> int | None:
+    """The largest message this server says it accepts, from its EHLO reply.
+
+    The server's own number beats the provider constant, which can only be as
+    fresh as the last time someone looked.
+    """
+    advertised = smtp.esmtp_features.get("size")
+    try:
+        return int(advertised)
+    except (TypeError, ValueError):
+        return None
+
+
+def _send_over(
+    smtp: smtplib.SMTP, mime: EmailMessage, recipients: tuple[str, ...]
+) -> dict[str, str]:
+    """Hand the message to the server; report per-recipient refusals.
+
+    Recipients are passed explicitly rather than left to be read off the headers,
+    which is what delivers bcc addresses without naming them in the message.
+    """
+    try:
+        refused = smtp.send_message(
+            mime, from_addr=mime["From"], to_addrs=list(recipients)
+        )
+    except smtplib.SMTPRecipientsRefused as err:
+        refused_all = ", ".join(sorted(err.recipients))
+        raise RecipientRefusedError(
+            f"the server refused every recipient ({refused_all}); nothing was sent"
+        ) from err
+    return {address: _as_reason(reply) for address, reply in refused.items()}
+
+
+def _as_reason(reply: tuple[int, bytes]) -> str:
+    code, text = reply
+    return f"{code} {_as_text(text)}"
+
+
+def _as_text(server_reply: bytes | str) -> str:
+    """The server's own words, collapsed to one line.
+
+    Replies arrive as bytes, and a rejection often spans several lines; both
+    would otherwise land mid-sentence in an error message.
+    """
+    if isinstance(server_reply, bytes):
+        server_reply = server_reply.decode("utf-8", errors="replace")
+    return " ".join(server_reply.split())
+
+
+def _as_receipt(
+    mime: EmailMessage, recipients: tuple[str, ...], reason_by_refused: dict[str, str]
+) -> SendReceipt:
+    return SendReceipt(
+        message_id                  = str(mime["Message-ID"]),
+        accepted                    = tuple(
+            address for address in recipients if address not in reason_by_refused
+        ),
+        reason_by_refused_recipient = reason_by_refused,
+    )
