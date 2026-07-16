@@ -1,10 +1,13 @@
 """Send mail from Python through Gmail or Naver SMTP.
 
-The one-liner:
-
     from mailrun import send_mail
 
-    send_mail(to="lead", subject="Hello", body="Hi.")
+    send_mail(
+        to          = "lead",
+        subject     = "Weekly report",
+        body        = "Hi,\\n\\nThis week's report is attached.\\n\\nBest regards,\\n",
+        attachments = ["report.xlsx"],
+    )
 
 `to` takes addresses, address-book aliases, or both, and falls back to the
 configured default when not mentioned. Anything the provider would reject -- a

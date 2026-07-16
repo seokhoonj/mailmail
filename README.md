@@ -95,18 +95,30 @@ ssh가 개인키에 대해 하는 것과 같다. `chmod 600`으로 고치라고 
 ```python
 from mailrun import send_mail
 
-send_mail(to="lead", subject="Hello", body="Hi.")
-```
-
-`to`에는 주소, 별칭, 또는 둘을 섞어서 넣는다. 첨부를 붙이면:
-
-```python
 send_mail(
-    to          = "lead",
-    subject     = "Hello",
-    body        = "Hi. See the attached file.",
+    to          = "lead",                    # 주소, 별칭, 또는 섞어서
+    subject     = "Weekly report",
+    body        = "Hi,\n\nThis week's report is attached.\n\nBest regards,\n",
     attachments = ["report.xlsx"],
 )
+```
+
+본문은 손대지 않고 그대로 나가므로 줄바꿈이 그대로 산다. 긴 본문은 삼중따옴표가 읽기 좋다:
+
+```python
+body = """\
+Hi,
+
+This week's report is attached. The loss ratio moved 1.2pp against last month;
+the detail is on the second sheet.
+
+Let me know if anything looks off.
+
+Best regards,
+Seokhoon
+"""
+
+send_mail(to="lead", subject="Weekly report", body=body, attachments=["report.xlsx"])
 ```
 
 계정 지정, HTML 본문, 참조까지 쓰면:
@@ -117,23 +129,27 @@ receipt = send_mail(
     to      = ["lead", "analyst@example.com"],
     cc      = "team",
     bcc     = "audit@example.com",
-    subject = "Hello",
-    body    = "Hi. This is the plain text version.",
-    html    = "<p>Hi. This is the <b>HTML</b> version.</p>",
+    subject = "Monthly close",
+    body    = "Hi,\n\nThe monthly close figures are below.\n\nBest regards,\n",
+    html    = "<p>Hi,</p><p>The monthly close figures are <b>below</b>.</p>"
+              "<p>Best regards,</p>",
 )
 
 if not receipt.is_complete:
     print(receipt.reason_by_refused_recipient)
 ```
 
+`html`을 넘기면 그게 보이고, HTML을 못 읽는 클라이언트는 `body`를 본다. 둘은 같은 내용을
+담아야 한다 — 다르게 쓰면 사람마다 다른 메일을 읽게 된다.
+
 ### 수신자 기본값
 
 `[defaults]`에 `to`/`cc`를 적어두면 **인자를 안 넘겼을 때** 그게 쓰인다.
 
 ```python
-send_mail(subject="Hello", body="Hi.")            # 기본 수신자·참조로
-send_mail(to="me", subject="Hello", body="Hi.")   # 참조는 여전히 기본값!
-send_mail(to="me", cc=(), subject="Hello", body="Hi.")   # 참조 없음
+send_mail(subject="Weekly report", body=body)                  # 기본 수신자·참조로
+send_mail(to="me", subject="Weekly report", body=body)         # 참조는 여전히 기본값!
+send_mail(to="me", cc=(), subject="Weekly report", body=body)  # 참조 없음
 ```
 
 `None`(안 적음)과 `()`(아무도 없음)은 다르다. 이 구분이 없으면 기본 참조를 끌 방법이
