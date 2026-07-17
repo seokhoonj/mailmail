@@ -157,7 +157,7 @@ python -c "
 import smtplib
 from mailrun import load_config, resolve_password
 
-for name in ('naver',):                # Gmail도 저장했으면 ('naver', 'gmail')
+for name in ('naver',):  # Gmail도 저장했으면 ('naver', 'gmail')
     account = load_config().resolve_account(name)
     smtp = smtplib.SMTP(account.provider.smtp_host, account.provider.smtp_port, timeout=20)
     smtp.ehlo(); smtp.starttls(); smtp.ehlo()
@@ -194,7 +194,7 @@ send_mail(
 ```python
 send_mail(to="lead", subject="주간 보고", body="확인 부탁드립니다.")
 send_mail(to=["lead", "someone@example.com"], subject="주간 보고", body="...")
-send_mail(to="team", subject="주간 보고", body="...")          # 묶음은 펼쳐진다
+send_mail(to="team", subject="주간 보고", body="...")  # 묶음은 펼쳐진다
 ```
 
 본문은 적은 그대로 나가므로 줄바꿈이 그대로 산다. 긴 본문은 따옴표 세 개가 편하다.
@@ -226,7 +226,7 @@ receipt = send_mail(
     attachments = ["close.xlsx", "notes.pdf"],
 )
 
-if not receipt.is_complete:                  # 일부 주소가 거부됐을 때
+if not receipt.is_complete:  # 일부 주소가 거부됐을 때
     print(receipt.reason_by_refused_recipient)
 ```
 
@@ -267,12 +267,12 @@ if not receipt.is_complete:                  # 일부 주소가 거부됐을 때
 설치는 한 줄이다. 이 저장소의 스킬 폴더를 Claude가 찾는 자리에 연결한다.
 
 ```sh
-ln -s "$PWD/skills/send-mail" ~/.claude/skills/send-mail      # macOS, Linux
+ln -s "$PWD/skills/send-mail" ~/.claude/skills/send-mail  # macOS, Linux
 ```
 
 ```powershell
 New-Item -ItemType SymbolicLink -Path "$HOME\.claude\skills\send-mail" `
-         -Target "$PWD\skills\send-mail"                       # Windows (PowerShell)
+         -Target "$PWD\skills\send-mail"  # Windows (PowerShell)
 ```
 
 그 다음부터는 Claude Code에서 그냥 말하면 된다.
@@ -303,7 +303,7 @@ New-Item -ItemType SymbolicLink -Path "$HOME\.claude\skills\send-mail" `
 
 ```sh
 pip install -e ".[dev]"
-pytest          # 실제로 메일을 보내지 않는다. 가짜 SMTP 서버를 쓴다
+pytest  # 실제로 메일을 보내지 않는다. 가짜 SMTP 서버를 쓴다
 ruff check src tests scripts
 mypy
 ```
