@@ -17,6 +17,7 @@ from pathlib import Path
 import pytest
 
 from mailrun import load_config, resolve_recipients
+from mailrun.attachment import _ENCODED_EXPANSION
 from mailrun.provider import GMAIL, NAVER
 
 README = Path(__file__).parent.parent / "README.md"
@@ -80,12 +81,23 @@ class TestTheFactsItStatesAreTheCodesFacts:
     -- these are the ones left, and they are pinned rather than trusted.
     """
 
-    def test_the_size_limits_match_the_providers(self):
+    def test_the_size_limits_it_advises_match_the_providers(self):
+        """What a reader acts on is "약 25MB", so that is the number pinned.
+
+        It used to be the byte count -- 35,882,577 -- which nobody weighs a file
+        against. The figure has to survive the same arithmetic the package does:
+        the server's ceiling is post-encoding, and base64 adds about 37%.
+
+        Truncated, not rounded. For a ceiling, 27 is safe advice at 27.8 MiB and
+        28 is an over-promise.
+        """
         body = readme_text()
-        for provider in (GMAIL, NAVER):
-            assert f"{provider.max_message_bytes:,}" in body, (
-                f"the README does not state {provider.smtp_host}'s real limit "
-                f"({provider.max_message_bytes:,})"
+        for provider, korean_name in ((GMAIL, "Gmail"), (NAVER, "네이버")):
+            usable = provider.max_message_bytes / _ENCODED_EXPANSION
+            advised = int(usable / 1024 / 1024)
+            assert f"{korean_name} 약 {advised}MB" in body, (
+                f"the README does not advise {korean_name}'s real ceiling "
+                f"({advised}MB of original files)"
             )
 
     def test_it_does_not_claim_a_test_count(self):
