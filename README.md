@@ -99,7 +99,7 @@ team = ["me", "lead"]
 
 | | 자릿수 | 형태 | 2단계 인증 |
 |---|---|---|---|
-| **네이버** | **12자리** | **대문자 + 숫자** | 필수 |
+| **NAVER** | **12자리** | **대문자 + 숫자** | 필수 |
 | **Gmail** | **16자리** | **소문자** | 필수 |
 
 ### 네이버
@@ -132,11 +132,11 @@ python -c "
 from getpass import getpass
 from mailrun import load_config, store_password
 
-account = load_config().resolve_account('naver')                 # Gmail이면 'gmail'
-password = getpass(f'{account.username} 앱 비밀번호: ').strip()
-print(f'  입력된 자릿수: {len(password)}')                       # 네이버 12, Gmail 16
+account = load_config().resolve_account('naver')                  # Gmail이면 'gmail'
+password = getpass(f'{account.username} app password: ').strip()
+print(f'  length: {len(password)}')                               # 네이버 12자리, Gmail 16자리
 store_password(account, password)
-print('  저장 완료')
+print('  saved')
 "
 ```
 
@@ -174,7 +174,7 @@ for name in ('naver',):  # Gmail도 저장했으면 ('naver', 'gmail')
 
 | 서버가 하는 말 | 뜻 |
 |---|---|
-| `535 5.7.1 Username and Password not accepted` (네이버) | 비밀번호가 틀렸거나, SMTP가 꺼져 있다. **둘 다 확인한다** — 이 메시지는 구분해주지 않는다 |
+| `535 5.7.1 Username and Password not accepted` (NAVER) | 비밀번호가 틀렸거나, SMTP가 꺼져 있다. **둘 다 확인한다** — 이 메시지는 구분해주지 않는다 |
 | `534 5.7.9 Application-specific password required` (Gmail) | 로그인 비밀번호를 넣었다. 앱 비밀번호로 다시 |
 
 ## 4. 메일 보내기
@@ -216,12 +216,12 @@ send_mail(to="lead", subject="주간 보고", body=body, attachments=["report.xl
 
 ```python
 receipt = send_mail(
-    account     = "gmail",                          # 안 적으면 default_account
+    account     = "gmail",  # 안 적으면 default_account
     to          = "lead",
     cc          = "team",
     bcc         = "audit@example.com",
     subject     = "월 마감",
-    body        = "월 마감 수치 보냅니다.",         # HTML을 못 읽는 메일 앱이 보는 것
+    body        = "월 마감 수치 보냅니다.",
     html        = "<p>월 마감 수치 보냅니다.</p>",
     attachments = ["close.xlsx", "notes.pdf"],
 )
@@ -288,7 +288,7 @@ New-Item -ItemType SymbolicLink -Path "$HOME\.claude\skills\send-mail" `
 
 ## 문제가 생기면
 
-예외 메시지가 무엇이 잘못됐고 어떻게 고치는지를 문장으로 알려준다. 자주 보게 될 것들:
+예외 메시지가 무엇이 잘못됐고 어떻게 고치는지를 문장으로 알려준다.
 
 | | 뜻 |
 |---|---|
