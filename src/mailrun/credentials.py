@@ -208,6 +208,20 @@ def _write_password_by_username(
 
 
 def _check_owner_only_readable(path: Path) -> None:
+    """Refuse a credentials file that other users can read.
+
+    POSIX only, because the mode is only real there. Windows has no group or
+    other bits to inspect: `os.stat` synthesises `st_mode` from the read-only
+    attribute alone, reporting 0o666 for an ordinary file and 0o444 for a
+    read-only one, so this test matched every file that exists -- including the
+    one `store_password` had just written -- and sent the reader off to run
+    `chmod`, which Windows does not have. Nor could they have fixed it there:
+    `os.chmod` on Windows "can only set the file's read-only flag... All other
+    bits are ignored" (CPython os docs). What guards the file there is the ACL on
+    the user's profile directory, which is not ours to read without a dependency.
+    """
+    if os.name != "posix":
+        return
     if not (path.stat().st_mode & (stat.S_IRWXG | stat.S_IRWXO)):
         return
     raise InsecureCredentialsError(

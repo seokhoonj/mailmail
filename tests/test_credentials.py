@@ -1,6 +1,7 @@
 """Storing passwords: found when wanted, and never left readable by others."""
 
 import json
+import os
 import stat
 
 import pytest
@@ -22,6 +23,10 @@ from mailrun.provider import GMAIL, NAVER
 
 NAVER_ACCOUNT = SmtpAccount(name="naver", username="me@naver.com", provider=NAVER)
 GMAIL_ACCOUNT = SmtpAccount(name="gmail", username="me@gmail.com", provider=GMAIL)
+
+posix_only = pytest.mark.skipif(
+    os.name != "posix", reason="the file mode is only real on POSIX"
+)
 
 
 @pytest.fixture
@@ -130,6 +135,7 @@ class TestEnvironmentOverride:
         assert not credentials_path.exists()
 
 
+@posix_only
 class TestFilePermissions:
     def test_new_file_is_owner_only_from_the_moment_it_exists(self, credentials_path):
         store_password(NAVER_ACCOUNT, "app-password")
@@ -180,6 +186,46 @@ class TestFilePermissions:
         credentials_path.chmod(0o644)
         store_password(NAVER_ACCOUNT, "app-password")
         assert mode_of(credentials_path) == CREDENTIALS_FILE_MODE
+
+
+@posix_only  # the setup chmods; only the value of `os.name` is being faked
+class TestWhereTheFileModeIsNotReal:
+    """Windows reports a mode that no chmod ever set, and the check believed it.
+
+    `os.stat` there synthesises `st_mode` from the read-only attribute alone --
+    0o666 for an ordinary file, 0o444 for a read-only one -- so a test for group
+    or other bits matches every file that exists. The package was therefore
+    unusable on Windows in a way no test noticed: `store_password` wrote the
+    file, `resolve_password` refused to read the very same file, and the refusal
+    said to run `chmod`, which Windows does not have. `os.chmod` there "can only
+    set the file's read-only flag... All other bits are ignored" (CPython os
+    docs), so there was no mode for anyone to fix.
+    """
+
+    # `path=` is passed rather than left to default, because faking `os.name` is
+    # a blunter instrument than it looks: `Path(...)` picks WindowsPath over
+    # PosixPath by reading it, so the default lookup would come back as
+    # `\tmp\...` and fail to find a file for reasons having nothing to do with
+    # the mode. Handing the path in keeps the fake pointed at the one thing under
+    # test.
+
+    def test_a_mode_posix_would_refuse_is_read_anyway(
+        self, credentials_path, monkeypatch
+    ):
+        store_password(NAVER_ACCOUNT, "app-password")
+        credentials_path.chmod(0o644)  # 0o666 is what Windows would report here
+        monkeypatch.setattr(os, "name", "nt")
+        got = resolve_password(NAVER_ACCOUNT, path=credentials_path)
+        assert got == "app-password"
+
+    def test_posix_still_refuses_that_same_file(self, credentials_path, monkeypatch):
+        # Guards the guard: the skip has to be about the platform. If the check
+        # itself had rotted, the test above would pass for the wrong reason.
+        store_password(NAVER_ACCOUNT, "app-password")
+        credentials_path.chmod(0o644)
+        monkeypatch.setattr(os, "name", "posix")
+        with pytest.raises(InsecureCredentialsError, match="chmod 600"):
+            resolve_password(NAVER_ACCOUNT, path=credentials_path)
 
     def test_write_leaves_no_temporary_file_behind(self, credentials_path):
         store_password(NAVER_ACCOUNT, "app-password")
