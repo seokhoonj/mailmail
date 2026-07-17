@@ -57,6 +57,28 @@ jobs:
           print('mailrun', mailrun.__version__, 'imports with no third-party packages')
           "
 
+      - name: Confirm a user's type checker can see the hints
+        # Every hint in this package is invisible to a user unless py.typed ships
+        # alongside it (PEP 561), and the source cannot answer whether it did:
+        # src/mailrun/py.typed can sit there in git while the built wheel omits it.
+        # So ask it the way a user does -- install the built package into a clean
+        # environment and run their checker over their code. It shipped without the
+        # marker once, which made `to` being required a promise that held only
+        # inside this repo.
+        run: |
+          uv venv /tmp/typed --python ${{ matrix.python-version }}
+          uv pip install --python /tmp/typed/bin/python . mypy
+          cat > /tmp/user_code.py <<'PY'
+          from mailrun import Message, send_mail
+
+          Message(subject="s", body="b", to="lead@example.com")  # 16 recipients
+          send_mail(subject="s", body="b")                       # no recipient
+          PY
+          /tmp/typed/bin/mypy /tmp/user_code.py > /tmp/mypy_out 2>&1 || true
+          cat /tmp/mypy_out
+          grep -q 'incompatible type "str"' /tmp/mypy_out
+          grep -q 'Missing named argument "to"' /tmp/mypy_out
+
   blocked-list-drift:
     # The size limit is asked of the server on every send, so it cannot go stale.
     # The blocked-extension list can: it is a snapshot of what Google published,
