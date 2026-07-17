@@ -247,22 +247,6 @@ mailer.send(Message.compose(subject="s", body=body, to=addresses))
 풀지 않고 `to="team"`이라고 주면 예외 없이 통과해서 `team`이라는 글자가 그대로 서버로 간다.
 바운스로 알게 되는 몇 안 되는 자리다.
 
-### Message.compose와 생성자
-
-`Message.compose(...)`는 느슨하게 받는다. 주소가 하나면 문자열로 줘도 된다. 생성자
-`Message(...)`는 엄격하다. 수신자를 튜플로만 받고 단독 문자열은 **거부한다.**
-
-```python
-Message(subject="s", body="b", to="lead@example.com")          # InvalidMessageError
-Message(subject="s", body="b", to=("lead@example.com",))       # ok
-Message.compose(subject="s", body="b", to="lead@example.com")  # ok
-```
-
-파이썬에서 문자열은 `for`로 돌리면 한 글자씩 나온다. 수신자 자리에서 문자열을 그대로
-받아주면 `to="lead@example.com"`은 주소 하나가 아니라 **16명의 한 글자짜리 수신자**가 된다.
-그래서 생성자는 거부하고, 문자열 지름길은 `compose`에 뒀다. `send_mail`도 문자열을
-받아주므로, 평소 쓰는 자리에서는 이 구분이 드러나지 않는다.
-
 ## 발송 전 검사
 
 첨부 차단은 확장자 기준이고 압축 안까지 본다. `.exe`, `.dll`, `.jar`, `.js`, `.bat`, `.vbs`,

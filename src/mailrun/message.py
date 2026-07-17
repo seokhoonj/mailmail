@@ -28,8 +28,9 @@ class Message:
     `__init__` parameter type -- one site, two roles -- so a field cannot be
     honest about a stored tuple and an accepted string at once. And the refusal
     earns its keep on its own: a `str` is an iterable of characters, so an
-    accepted `to="a@b.com"` is sixteen single-character recipients, and nothing
-    here type-checks.
+    accepted `to="a@b.com"` is sixteen single-character recipients. The hints
+    ship (see `py.typed`), so a caller who runs a type checker is told at author
+    time -- but most callers do not run one, and the sixteen are silent.
 
     Attributes
     ----------
@@ -157,9 +158,11 @@ def _refuse_bare_string(field_name: str, value: object) -> None:
     """Reject a lone string where a tuple of addresses belongs.
 
     A `str` is itself an iterable of characters, so `to="a@b.com"` would be
-    sixteen single-character recipients rather than one address -- and nothing
-    type-checks this package, so no tool would say a word. The constructor is
-    strict on purpose; the string shorthand lives on `Message.compose`.
+    sixteen single-character recipients rather than one address. A caller who
+    type-checks hears about it first (the hints reach them; see `py.typed`), and
+    this is what catches everyone else -- silently sending sixteen messages is
+    not a thing to leave to whether someone ran mypy. The constructor is strict
+    on purpose; the string shorthand lives on `Message.compose`.
     """
     if isinstance(value, str):
         raise InvalidMessageError(
