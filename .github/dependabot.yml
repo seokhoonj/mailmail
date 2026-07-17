@@ -6,9 +6,8 @@ updates:
     # treadmill: setup-uv ships several releases some weeks, nearly all of them
     # just checksums for a newly released uv, and a pull request per release on
     # a two-action workflow would be noise that gets skimmed and then ignored.
-    # Once a month is often enough for what this actually has to catch -- the
-    # major bumps neither pin follows on its own, which is how the actions here
-    # sat on a deprecated Node runtime for a year.
+    # Once a month is often enough for what this has to catch: the major bumps,
+    # which an exact pin cannot follow at all.
     schedule:
       interval: monthly
     groups:
