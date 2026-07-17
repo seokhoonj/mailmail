@@ -134,6 +134,23 @@ class TestItDoesNotAssumeItIsOnMyMachine:
             f"the skill points into a home directory layout only I have: {offenders}"
         )
 
+    def test_it_writes_down_no_path_the_package_computes(self):
+        """`~/.config/mailrun/...` is the package's answer, not a constant.
+
+        `default_config_path()` reads MAILRUN_CONFIG and XDG_CONFIG_HOME, so a
+        literal path here sends anyone who set either to go fix the wrong file.
+        This is the third time a path was written down in this skill and the
+        second time it was wrong -- the first was `~/Dropbox/mailrun`, true on
+        one computer.
+        """
+        body = SKILL.read_text(encoding="utf-8")
+        for computed in ("~/.config/mailrun/config.toml",
+                         "~/.config/mailrun/credentials.json"):
+            assert computed not in body, (
+                f"the skill states {computed}, which the package works out from "
+                f"the environment -- ask it with default_config_path() instead"
+            )
+
     def test_it_names_no_particular_cloud_drive(self):
         body = SKILL.read_text(encoding="utf-8")
         for mine in ("Dropbox", "OneDrive", "iCloud", "Google Drive"):

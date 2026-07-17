@@ -77,7 +77,7 @@ def resolve_password(account: SmtpAccount, *, path: Path | None = None) -> str:
     `MAILRUN_PASSWORD_<ACCOUNT>` is read before the bare `MAILRUN_PASSWORD` --
     with two accounts configured, the bare name cannot say which mailbox it is
     for, and answering with it anyway sends one service's app password to the
-    other's server. See `_password_from_env`.
+    other's server. See `_load_password_from_env`.
 
     Raises
     ------
@@ -88,7 +88,7 @@ def resolve_password(account: SmtpAccount, *, path: Path | None = None) -> str:
     CredentialsError
         The file exists but is not readable JSON.
     """
-    from_env = _password_from_env(account)
+    from_env = _load_password_from_env(account)
     if from_env:
         return from_env
     path = path if path is not None else default_credentials_path()
@@ -162,7 +162,7 @@ def delete_password(account: SmtpAccount, *, path: Path | None = None) -> None:
     _write_password_by_username(path, password_by_username)
 
 
-def _password_from_env(account: SmtpAccount) -> str | None:
+def _load_password_from_env(account: SmtpAccount) -> str | None:
     """The password the environment offers for this account, if any.
 
     `MAILRUN_PASSWORD_NAVER` beats a bare `MAILRUN_PASSWORD`, because the bare

@@ -10,7 +10,7 @@ import pytest
 from mailrun.attachment import (
     _MAX_ARCHIVE_DEPTH,
     Attachment,
-    _looks_like_a_tar,
+    _has_tar_magic,
     check_attachments,
     check_message_size,
 )
@@ -601,7 +601,7 @@ class TestANestedArchiveTooBigToLookInside:
 class TestSniffingATarHeaderReadsOnlyTheHeader:
     """262 bytes, not the file.
 
-    `_looks_like_a_tar` runs when `tarfile.open` has already refused, to tell "not
+    `_has_tar_magic` runs when `tarfile.open` has already refused, to tell "not
     a tar" from "a broken tar". It first read the whole file and sliced the front
     off: a 300 MiB file peaked at 322 MiB resident to look at its first block.
     That is the same fault as weighing a message by assembling it -- reintroduced
@@ -630,7 +630,7 @@ class TestSniffingATarHeaderReadsOnlyTheHeader:
             return stream
 
         monkeypatch.setattr(Path, "open", spy_open)
-        _looks_like_a_tar(big)
+        _has_tar_magic(big)
 
         assert read_sizes, "the head was never read"
         assert all(size == 262 for size in read_sizes), (
@@ -641,10 +641,10 @@ class TestSniffingATarHeaderReadsOnlyTheHeader:
         path = tmp_path / "real.tar"
         with tarfile.open(path, "w") as archive:
             archive.add(write_file(tmp_path, "notes.txt"), "notes.txt")
-        assert _looks_like_a_tar(path) is True
+        assert _has_tar_magic(path) is True
 
     def test_it_still_declines_a_file_that_is_not_one(self, tmp_path):
-        assert _looks_like_a_tar(write_file(tmp_path, "notes.tar", b"plain")) is False
+        assert _has_tar_magic(write_file(tmp_path, "notes.tar", b"plain")) is False
 
 
 class TestTheOtherWaysAnArchiveStopsEarly:

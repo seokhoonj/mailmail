@@ -164,10 +164,22 @@ $MAILRUN_PY <scratchpad>/send.py
 
 ## 첫 설정
 
-`ConfigError`가 나면 `~/.config/mailrun/config.toml`이 없는 것이다. 형식은 저장소의
-`README.md` 2단계에 있다. **설정 파일과 비밀번호는 저장소 안에 만들지 않는다** — 저장소는
-커밋되고, 클라우드 드라이브 아래 놓여 있을 수도 있다. 설정은 `~/.config/mailrun/config.toml`,
-비밀번호는 `~/.config/mailrun/credentials.json`(권한 600)이다. 둘 다 저장소 밖이다.
+`ConfigError`가 나면 설정 파일이 없는 것이다. 형식은 저장소의 `README.md` 2단계에 있다.
+
+**경로를 적어두지 마라.** 패키지가 `MAILRUN_CONFIG`·`MAILRUN_CREDENTIALS`·`XDG_CONFIG_HOME`를
+보고 정하므로, 여기 적은 경로는 그걸 설정한 사용자에게 틀린 파일을 고치라고 안내하게 된다.
+패키지에 물어라:
+
+```sh
+$MAILRUN_PY -c "
+from mailrun import default_config_path, default_credentials_path
+print('config:     ', default_config_path())
+print('credentials:', default_credentials_path())
+"
+```
+
+**설정 파일과 비밀번호는 저장소 안에 만들지 않는다** — 저장소는 커밋되고, 클라우드 드라이브
+아래 놓여 있을 수도 있다. 위가 찍어주는 자리에 만든다. 둘 다 저장소 밖이다.
 
 **비밀번호를 대화나 스크립트에 평문으로 쓰지 마라.** 대화 기록에 남는다. 사용자에게
 `getpass`를 쓰는 명령을 안내하고 본인 터미널에서 실행하게 한다.

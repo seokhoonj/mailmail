@@ -33,7 +33,7 @@ __all__ = [
     "Attachment",
     "check_attachments",
     "check_message_size",
-    "estimated_encoded_bytes",
+    "estimate_encoded_bytes",
 ]
 
 DEFAULT_MIME_TYPE = "application/octet-stream"
@@ -171,7 +171,7 @@ def check_attachments(
         _check_one_attachment(attachment, provider=provider)
 
 
-def estimated_encoded_bytes(attachments: Iterable[Attachment]) -> int:
+def estimate_encoded_bytes(attachments: Iterable[Attachment]) -> int:
     """A floor on what these attachments will weigh once encoded, from `stat`.
 
     Cheap on purpose, and asked before the message is assembled, because
@@ -332,7 +332,7 @@ def _zip_member_names(
     try:
         archive = zipfile.ZipFile(source)
     except zipfile.BadZipFile as err:
-        if _looks_like_a_zip(source):
+        if _has_zip_magic(source):
             raise UnscannableArchiveError(
                 f"{name} carries a zip header but will not open ({err}); an "
                 f"archive that cannot be read must not pass as one that holds "
@@ -379,7 +379,7 @@ def _tar_member_names(
         # a file that is not a tar -- the `with` cannot start until it returns.
         opened = _open_tar(source)
     except (tarfile.ReadError, EOFError) as err:
-        if _looks_like_a_tar(source):
+        if _has_tar_magic(source):
             raise UnscannableArchiveError(
                 f"{name} carries a tar header but will not open ({err}); an "
                 f"archive that cannot be read must not pass as one that holds "
@@ -437,11 +437,11 @@ def _open_tar(source: Path | IO[bytes]) -> tarfile.TarFile:
 
 # Offset and value of the format stamp POSIX puts in every tar header, and the
 # signature every zip local file header opens with.
-_TAR_MAGIC_AT, _TAR_MAGIC = 257, b"ustar"
-_ZIP_MAGIC_AT, _ZIP_MAGIC = 0, b"PK\x03\x04"
+_TAR_MAGIC_OFFSET, _TAR_MAGIC = 257, b"ustar"
+_ZIP_MAGIC_OFFSET, _ZIP_MAGIC = 0, b"PK\x03\x04"
 
 
-def _looks_like_a_zip(source: Path | IO[bytes]) -> bool:
+def _has_zip_magic(source: Path | IO[bytes]) -> bool:
     """Whether the file opens with a zip signature, whatever `zipfile` said.
 
     The zip half of the question `_looks_like_a_tar` answers for tars, and it
@@ -452,10 +452,10 @@ def _looks_like_a_zip(source: Path | IO[bytes]) -> bool:
     report.zip carrying setup.exe came back clean -- while the byte-identical
     tar was refused, because that branch had been given this and this one had not.
     """
-    return _head_matches(source, _ZIP_MAGIC_AT, _ZIP_MAGIC)
+    return _head_matches(source, _ZIP_MAGIC_OFFSET, _ZIP_MAGIC)
 
 
-def _looks_like_a_tar(source: Path | IO[bytes]) -> bool:
+def _has_tar_magic(source: Path | IO[bytes]) -> bool:
     """Whether the first block carries a tar header, whatever `tarfile` said.
 
     Asked only when `tarfile.open` has already refused, to tell its two answers
@@ -472,7 +472,7 @@ def _looks_like_a_tar(source: Path | IO[bytes]) -> bool:
     Only plain tars are recognised. A compressed one that stops early fails
     inside the decompressor, which `_tar_member_names` catches at the open.
     """
-    return _head_matches(source, _TAR_MAGIC_AT, _TAR_MAGIC)
+    return _head_matches(source, _TAR_MAGIC_OFFSET, _TAR_MAGIC)
 
 
 # Every tar closes with two zeroed blocks. Reaching them is the only evidence
@@ -504,8 +504,8 @@ def _reached_the_end_marker(archive: tarfile.TarFile) -> bool:
         return False
 
 
-def _head_matches(source: Path | IO[bytes], at: int, magic: bytes) -> bool:
-    """Whether `magic` sits at `at` in the first bytes of `source`.
+def _head_matches(source: Path | IO[bytes], offset: int, magic: bytes) -> bool:
+    """Whether `magic` sits at `offset` in the first bytes of `source`.
 
     Reads the head and nothing more. The first cut of the tar sniffer wrote
     `source.read_bytes()[:262]`, which loads the whole file to slice 262 bytes
@@ -520,14 +520,14 @@ def _head_matches(source: Path | IO[bytes], at: int, magic: bytes) -> bool:
     try:
         if isinstance(source, Path):
             with source.open("rb") as head_stream:
-                head = head_stream.read(at + len(magic))
+                head = head_stream.read(offset + len(magic))
         else:
             source.seek(0)
-            head = source.read(at + len(magic))
+            head = source.read(offset + len(magic))
             source.seek(0)
     except OSError:
         return False
-    return head[at:] == magic
+    return head[offset:] == magic
 
 
 def _nested_member_names(

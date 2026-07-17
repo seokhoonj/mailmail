@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 
 from mailrun.account import SmtpAccount
-from mailrun.attachment import Attachment, estimated_encoded_bytes
+from mailrun.attachment import Attachment, estimate_encoded_bytes
 from mailrun.credentials import store_password
 from mailrun.errors import (
     AuthenticationFailedError,
@@ -430,7 +430,7 @@ class TestTooLargeIsRefusedWithoutReadingTheFile:
             attachment = tmp_path / f"{size}.bin"
             attachment.write_bytes(b"\0" * size)
             message = make_message(attachments=[Attachment.from_path(attachment)])
-            estimate = estimated_encoded_bytes(message.attachments)
+            estimate = estimate_encoded_bytes(message.attachments)
             actual = len(_as_wire_bytes(message.to_mime(sender="me@example.com")))
             assert estimate < actual, f"estimate {estimate} >= actual {actual}"
 

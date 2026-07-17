@@ -20,7 +20,7 @@ from mailrun.account import SmtpAccount
 from mailrun.attachment import (
     check_attachments,
     check_message_size,
-    estimated_encoded_bytes,
+    estimate_encoded_bytes,
 )
 from mailrun.credentials import resolve_password
 from mailrun.errors import AuthenticationFailedError, RecipientRefusedError
@@ -155,7 +155,7 @@ class Mailer:
         provider = self._account.provider
         check_attachments(message.attachments, provider=provider)
         check_message_size(
-            estimated_encoded_bytes(message.attachments),
+            estimate_encoded_bytes(message.attachments),
             limit_bytes = provider.max_message_bytes,
         )
         mime = message.to_mime(sender=self._account.username)
@@ -197,7 +197,7 @@ class Mailer:
         try:
             if provider.security != "ssl":
                 smtp.ehlo()
-                smtp.starttls(context=_verifying_tls_context())
+                smtp.starttls(context=_make_verifying_tls_context())
             smtp.ehlo()
             smtp.login(self._account.username, password)
         except smtplib.SMTPAuthenticationError as err:
@@ -219,14 +219,14 @@ class Mailer:
                 provider.smtp_host,
                 provider.smtp_port,
                 timeout = self._timeout_seconds,
-                context = _verifying_tls_context(),
+                context = _make_verifying_tls_context(),
             )
         return smtplib.SMTP(
             provider.smtp_host, provider.smtp_port, timeout=self._timeout_seconds
         )
 
 
-def _verifying_tls_context() -> ssl.SSLContext:
+def _make_verifying_tls_context() -> ssl.SSLContext:
     """A TLS context that checks the server is who it says it is.
 
     Passed explicitly because smtplib's default is not this. Given no context,
