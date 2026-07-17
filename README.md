@@ -40,8 +40,8 @@ python -m venv .venv
 않으려는 것이다. 만들었으면 켠다.
 
 ```sh
-source .venv/bin/activate       # macOS, Linux
-.venv\Scripts\activate          # Windows
+source .venv/bin/activate  # macOS, Linux
+.venv\Scripts\activate     # Windows
 ```
 
 켜지면 프롬프트 앞에 `(.venv)`가 붙는다. **터미널을 새로 열 때마다 이 줄을 다시 실행해야
@@ -132,9 +132,9 @@ python -c "
 from getpass import getpass
 from mailrun import load_config, store_password
 
-account = load_config().resolve_account('naver')      # Gmail이면 'gmail'
+account = load_config().resolve_account('naver')                 # Gmail이면 'gmail'
 password = getpass(f'{account.username} 앱 비밀번호: ').strip()
-print(f'  입력된 자릿수: {len(password)}')             # 네이버 12, Gmail 16
+print(f'  입력된 자릿수: {len(password)}')                       # 네이버 12, Gmail 16
 store_password(account, password)
 print('  저장 완료')
 "
@@ -216,17 +216,17 @@ send_mail(to="lead", subject="주간 보고", body=body, attachments=["report.xl
 
 ```python
 receipt = send_mail(
-    account     = "gmail",                      # 안 적으면 default_account
+    account     = "gmail",                          # 안 적으면 default_account
     to          = "lead",
     cc          = "team",
     bcc         = "audit@example.com",
     subject     = "월 마감",
-    body        = "월 마감 수치 보냅니다.",       # HTML을 못 읽는 메일 앱이 보는 것
+    body        = "월 마감 수치 보냅니다.",         # HTML을 못 읽는 메일 앱이 보는 것
     html        = "<p>월 마감 수치 보냅니다.</p>",
     attachments = ["close.xlsx", "notes.pdf"],
 )
 
-if not receipt.is_complete:                     # 일부 주소가 거부됐을 때
+if not receipt.is_complete:                  # 일부 주소가 거부됐을 때
     print(receipt.reason_by_refused_recipient)
 ```
 
