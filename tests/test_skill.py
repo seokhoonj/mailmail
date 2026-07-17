@@ -105,3 +105,39 @@ class TestTheSkillStaysAThinWrapper:
     def test_it_tells_the_reader_to_relay_the_exception_text(self):
         # The rule that replaced the restated facts.
         assert "str(err)" in SKILL.read_text(encoding="utf-8")
+
+    def test_every_error_a_caller_must_act_on_is_in_the_table(self):
+        """The one thing the skill is allowed to know: what to *do* per error.
+
+        It may not restate the blocked list or the size limits -- those are the
+        package's to state, and the tests above hold that line. But the recovery
+        action is the skill's own knowledge, so the table is the one place a new
+        error can go missing, silently, and the skill just shrugs at it.
+
+        That is not hypothetical: adding `UnscannableArchiveError` left the table
+        one error short the same day, and a deep zip would have reached the agent
+        as a name it had never been told about.
+
+        The base classes are exempt -- nothing raises a bare `AttachmentError`,
+        and listing it would only tell the reader to catch a category it will
+        never see.
+        """
+        from mailrun import errors
+
+        abstract = {
+            "MailrunError",
+            "ConfigError",
+            "ContactError",
+            "AttachmentError",
+            "CredentialsError",
+        }
+        body = SKILL.read_text(encoding="utf-8")
+        missing = [
+            name
+            for name in errors.__all__
+            if name not in abstract and f"`{name}`" not in body
+        ]
+        assert not missing, (
+            f"the package raises errors the skill has no action for: {missing} -- "
+            f"add a row to the exception table in {SKILL.name}"
+        )

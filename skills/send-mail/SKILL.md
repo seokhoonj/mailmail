@@ -144,12 +144,14 @@ if not receipt.is_complete:
 | `InsecureCredentialsError` | 없음 — 예외에 `chmod 600` 명령이 그대로 들어 있다. |
 | `BlockedAttachmentError` | 링크 공유를 제안한다. |
 | `EncryptedArchiveError` | 압축 비밀번호를 풀거나 링크로 보낼지 묻는다. |
+| `UnscannableArchiveError` | 압축이 너무 깊거나 커서 끝까지 들여다볼 수 없다. 압축을 한 겹 풀거나 링크로 보낼지 묻는다. (`EncryptedArchiveError`가 이것의 한 갈래이므로, 둘 다 잡으려면 이 이름으로 잡는다.) |
 | `MessageTooLargeError` | 첨부를 줄일지 묻는다. |
 | `UnknownContactError` | 예외가 아는 별칭을 나열하므로, 그중에서 고르게 하거나 주소를 직접 받는다. |
 | `ContactCycleError` | 없음 — 예외가 순환 경로를 그려준다. |
 | `InvalidMessageError` | 수신자나 제목이 비었다. 사용자에게 받아서 다시 조립한다. |
 | `RecipientRefusedError` | 주소 오타를 먼저 의심한다. |
 | `AuthenticationFailedError` | 없음 — 예외에 해당 provider의 요구사항이 전부 들어 있다. |
+| `UnknownAccountError` / `UnknownProviderError` | 설정에 없는 계정·provider다. 아래 "첫 설정"으로 간다. |
 
 ## 첫 설정
 
