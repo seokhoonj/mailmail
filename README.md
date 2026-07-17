@@ -1,6 +1,6 @@
 # mailrun
 
-네이버·Gmail 계정으로 메일을 보내는 파이썬 패키지. 첨부파일, HTML 본문, 참조를 지원하고,
+NAVER·Gmail 계정으로 메일을 보내는 파이썬 패키지. 첨부파일, HTML 본문, 참조를 지원하고,
 자주 보내는 사람은 이름으로 저장해두고 부를 수 있다.
 
 ```python
@@ -24,7 +24,7 @@ Windows·macOS·Linux에서 동작한다. 설치되는 것은 이 패키지뿐�
 - **Python 3.11 이상.** 터미널에서 `python --version`으로 확인한다. (Windows에서는 `py
   --version`일 수 있다.) 없거나 낮으면 [python.org](https://www.python.org/downloads/)에서
   받는다.
-- **네이버나 Gmail 계정.**
+- **NAVER나 Gmail 계정.**
 - **그 계정의 앱 비밀번호.** 3단계에서 받는다. **평소 로그인하는 비밀번호로는 안 된다** —
   두 서비스 다 거부한다.
 
@@ -102,7 +102,7 @@ team = ["me", "lead"]
 | **NAVER** | **12자리** | **대문자 + 숫자** | 필수 |
 | **Gmail** | **16자리** | **소문자** | 필수 |
 
-### 네이버
+### NAVER
 
 2025년 6월 24일부터 메일 프로그램 연결에 2단계 인증과 앱 비밀번호가 **필수**가 되었다. 예전에
 잘 되던 설정이 갑자기 안 된다면 그 때문이다.
@@ -134,7 +134,7 @@ from mailrun import load_config, store_password
 
 account = load_config().resolve_account('naver')                  # Gmail이면 'gmail'
 password = getpass(f'{account.username} app password: ').strip()
-print(f'  length: {len(password)}')                               # 네이버 12자리, Gmail 16자리
+print(f'  length: {len(password)}')                               # NAVER 12자리, Gmail 16자리
 store_password(account, password)
 print('  saved')
 "
@@ -245,14 +245,14 @@ if not receipt.is_complete:  # 일부 주소가 거부됐을 때
 
 - **실행파일.** `.exe`, `.dll`, `.jar`, `.js`, `.bat`, `.vbs`, `.ps1`, `.msi` 같은 것들.
   `.zip`이나 `.tar.gz` **안에 넣어도 똑같이 막힌다.** ([Gmail이 공개한 목록](https://support.google.com/mail/answer/6590).
-  네이버는 목록을 공개하지 않아 같은 기준을 적용한다.)
+  NAVER는 목록을 공개하지 않아 같은 기준을 적용한다.)
 - **비밀번호가 걸린 zip.** 안에 뭐가 들었든 거부된다. 서비스가 열어볼 수 없기 때문이다.
 - **너무 크거나 너무 여러 겹인 압축.** 4겹까지, 안쪽 파일 64MB까지만 들여다본다.
 
 보내야 하면 링크로 공유한다.
 
 **크기 한도** — 첨부는 메일에 실리면서 약 37% 커진다. 그래서 원본 파일 합계 기준으로
-**Gmail 약 25MB**, **네이버 약 27MB**가 상한이다. 웹 화면이 안내하는 숫자와 다를 수 있는데,
+**Gmail 약 25MB**, **NAVER 약 27MB**가 상한이다. 웹 화면이 안내하는 숫자와 다를 수 있는데,
 실제로 받아주는 쪽은 이쪽이다.
 
 **`.7z`과 `.rar`은 안을 볼 수 없다.** 파이썬 표준 라이브러리가 이 형식을 못 읽는다. 이 안에
@@ -297,7 +297,7 @@ New-Item -ItemType SymbolicLink -Path "$HOME\.claude\skills\send-mail" `
 | `UnknownContactError` | 주소록에 없는 이름이다. 아는 이름들을 함께 알려준다 |
 | `BlockedAttachmentError` | 메일 서비스가 막는 파일이다. 링크로 공유한다 |
 | `MessageTooLargeError` | 첨부가 한도를 넘는다 |
-| `AuthenticationFailedError` | 로그인이 거부됐다. 앱 비밀번호가 맞는지, 네이버라면 SMTP가 켜져 있는지 |
+| `AuthenticationFailedError` | 로그인이 거부됐다. 앱 비밀번호가 맞는지, NAVER라면 SMTP가 켜져 있는지 |
 
 ## 개발
 

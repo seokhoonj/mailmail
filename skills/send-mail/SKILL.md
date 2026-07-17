@@ -16,8 +16,25 @@ description: "대화 중에 나온 결과·리포트·파일을 메일로 보낸
 직접 검사하지 마라. 그러면 규칙이 두 집에 살게 되고 둘은 반드시 갈라진다. 이 skill은
 `send_mail(...)` 호출 하나를 조립해서 실행할 뿐이다.
 
-패키지 위치: `~/Dropbox/mailrun`, venv는 그 안의 `.venv`.
-실행: `~/Dropbox/mailrun/.venv/bin/python`
+## 패키지를 어디서 찾나
+
+**경로를 하드코딩하지 마라.** 사람마다 저장소를 다른 데 클론한다. 이 skill은 저장소 안에서
+심링크된 것이므로, 저장소는 이 skill 폴더의 **두 단계 위**다. 세션에서 처음 필요할 때 한 번
+찾고, 그 뒤로는 그 값을 재사용한다.
+
+```sh
+python3 -c "
+import os, pathlib
+skill = pathlib.Path(os.path.realpath(os.path.expanduser('~/.claude/skills/send-mail')))
+venv  = skill.parents[1] / '.venv' / ('Scripts' if os.name == 'nt' else 'bin') / 'python'
+print(venv if venv.exists() else 'NOT FOUND')
+"
+```
+
+`NOT FOUND`가 나오면 지어내지 말고 **사용자에게 저장소 위치를 묻는다.** 심링크가 아니라
+복사해 뒀거나, venv를 아직 안 만든 것이다 (README 1단계).
+
+아래 예시들은 이렇게 찾은 경로를 `$MAILRUN_PY`로 적는다.
 
 ## 절차
 
@@ -39,7 +56,7 @@ description: "대화 중에 나온 결과·리포트·파일을 메일로 보낸
 별칭이 뭐가 있는지 모르면 주소록을 먼저 읽는다:
 
 ```sh
-~/Dropbox/mailrun/.venv/bin/python -c "
+$MAILRUN_PY -c "
 from mailrun import load_config
 config = load_config()
 print('accounts:', ', '.join(sorted(config.account_by_name)))
@@ -54,7 +71,7 @@ print('contacts:', ', '.join(sorted(config.address_book)))
 나가는지 눈으로 확인할 수 있어야 한다. 펼치는 것도 패키지가 한다:
 
 ```sh
-~/Dropbox/mailrun/.venv/bin/python -c "
+$MAILRUN_PY -c "
 from mailrun import load_config, resolve_recipients
 config = load_config()
 print(resolve_recipients(['team'], address_book=config.address_book))
@@ -113,7 +130,7 @@ if not receipt.is_complete:
 ```
 
 ```sh
-~/Dropbox/mailrun/.venv/bin/python <scratchpad>/send.py
+$MAILRUN_PY <scratchpad>/send.py
 ```
 
 ### 4. 결과를 그대로 보고한다
@@ -147,11 +164,10 @@ if not receipt.is_complete:
 
 ## 첫 설정
 
-`ConfigError`가 나면 `~/.config/mailrun/config.toml`이 없는 것이다. 형식은
-`~/Dropbox/mailrun/README.md`에 있다. **설정 파일과 비밀번호는 저장소 안에 만들지 않는다** —
-`~/Dropbox/mailrun`은 Dropbox로 동기화되므로 거기 둔 자격증명은 클라우드로 올라간다.
-설정은 `~/.config/mailrun/config.toml`, 비밀번호는 `~/.config/mailrun/credentials.json`
-(권한 600)이다. 둘 다 Dropbox 밖이다.
+`ConfigError`가 나면 `~/.config/mailrun/config.toml`이 없는 것이다. 형식은 저장소의
+`README.md` 2단계에 있다. **설정 파일과 비밀번호는 저장소 안에 만들지 않는다** — 저장소는
+커밋되고, 클라우드 드라이브 아래 놓여 있을 수도 있다. 설정은 `~/.config/mailrun/config.toml`,
+비밀번호는 `~/.config/mailrun/credentials.json`(권한 600)이다. 둘 다 저장소 밖이다.
 
 **비밀번호를 대화나 스크립트에 평문으로 쓰지 마라.** 대화 기록에 남는다. 사용자에게
 `getpass`를 쓰는 명령을 안내하고 본인 터미널에서 실행하게 한다.

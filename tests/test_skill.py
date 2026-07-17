@@ -106,6 +106,47 @@ class TestTheSkillStaysAThinWrapper:
         # The rule that replaced the restated facts.
         assert "str(err)" in SKILL.read_text(encoding="utf-8")
 
+
+class TestItDoesNotAssumeItIsOnMyMachine:
+    """The skill ships to whoever clones the repo, wherever they put it.
+
+    It used to say the package lives at `~/Dropbox/mailrun` and to run
+    `~/Dropbox/mailrun/.venv/bin/python`. That path is true on exactly one
+    computer. The README tells everyone else to `git clone` and land wherever
+    they are, so for them the skill pointed at nothing -- and it explained the
+    config location by talking about Dropbox syncing, which is my arrangement,
+    not theirs.
+
+    The skill is symlinked out of the repo, so it can find the repo two levels up
+    from itself. That works from any checkout, and there is nothing left to
+    hardcode.
+    """
+
+    def test_it_names_no_absolute_path_from_one_persons_home(self):
+        body = SKILL.read_text(encoding="utf-8")
+        # `~/.config/...` is fine: that one really is the same for everybody.
+        offenders = [
+            line.strip()
+            for line in body.splitlines()
+            if "~/" in line and "~/.config" not in line and "~/.claude" not in line
+        ]
+        assert not offenders, (
+            f"the skill points into a home directory layout only I have: {offenders}"
+        )
+
+    def test_it_names_no_particular_cloud_drive(self):
+        body = SKILL.read_text(encoding="utf-8")
+        for mine in ("Dropbox", "OneDrive", "iCloud", "Google Drive"):
+            assert mine not in body, (
+                f"the skill explains itself in terms of {mine}, which is where I "
+                f"happen to keep this and says nothing about anyone else"
+            )
+
+    def test_it_finds_the_interpreter_instead_of_knowing_it(self):
+        body = SKILL.read_text(encoding="utf-8")
+        assert "os.path.realpath" in body, "the skill must resolve its own symlink"
+        assert "NOT FOUND" in body, "and must have an answer for when that fails"
+
     def test_every_error_a_caller_must_act_on_is_in_the_table(self):
         """The one thing the skill is allowed to know: what to *do* per error.
 

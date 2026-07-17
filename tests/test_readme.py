@@ -92,11 +92,13 @@ class TestTheFactsItStatesAreTheCodesFacts:
         28 is an over-promise.
         """
         body = readme_text()
-        for provider, korean_name in ((GMAIL, "Gmail"), (NAVER, "네이버")):
+        for provider in (GMAIL, NAVER):
             usable = provider.max_message_bytes / _ENCODED_EXPANSION
             advised = int(usable / 1024 / 1024)
-            assert f"{korean_name} 약 {advised}MB" in body, (
-                f"the README does not advise {korean_name}'s real ceiling "
+            # The README names each service the way the service brands itself,
+            # which is also what `provider.name` holds.
+            assert f"{provider.name.upper()} 약 {advised}MB" in body.upper(), (
+                f"the README does not advise {provider.name}'s real ceiling "
                 f"({advised}MB of original files)"
             )
 
