@@ -57,6 +57,7 @@ class FakeSmtp:
         self.logins: list[tuple[str, str]] = []
         self.connections: list[dict[str, object]] = []
         self.started_tls = False
+        self.starttls_context = None
         self.quit_count = 0
         self.close_count = 0
         self.rejects_login = False
@@ -68,7 +69,11 @@ class FakeSmtp:
     def ehlo(self):
         return 250, b"ok"
 
-    def starttls(self):
+    def starttls(self, context=None):
+        # The context is kept, not ignored: passing one that verifies is the
+        # whole defence against handing the password to an impostor, and a fake
+        # that swallowed the argument would let it go missing unnoticed.
+        self.starttls_context = context
         if self.starttls_raises is not None:
             raise self.starttls_raises
         self.started_tls = True

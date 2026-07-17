@@ -6,6 +6,7 @@ would be handed, deterministically and offline.
 """
 
 import smtplib
+import ssl
 
 import pytest
 
@@ -62,6 +63,21 @@ class TestConnection:
     def test_starts_tls_before_logging_in(self, fake_smtp):
         Mailer(ACCOUNT).send(a_message())
         assert fake_smtp.started_tls
+
+    def test_the_tls_context_checks_who_answered(self, fake_smtp):
+        """Starting TLS is not the point; starting it with someone you checked is.
+
+        smtplib's default context verifies nothing -- `ssl._create_stdlib_context`
+        is `ssl._create_unverified_context` -- so `started_tls` was true while any
+        self-signed certificate was being accepted and the password sent through
+        it. tests/test_tls.py proves the refusal against a real impostor; this
+        pins the two settings that cause it, where a failure names them.
+        """
+        Mailer(ACCOUNT).send(a_message())
+        context = fake_smtp.starttls_context
+        assert context is not None, "no context passed: smtplib would verify nothing"
+        assert context.check_hostname is True
+        assert context.verify_mode is ssl.CERT_REQUIRED
 
     def test_logs_in_with_the_stored_password(self, fake_smtp):
         Mailer(ACCOUNT).send(a_message())

@@ -13,6 +13,7 @@ from mailrun.attachment import (
     check_message_size,
 )
 from mailrun.errors import (
+    MailrunError,
     AttachmentError,
     BlockedAttachmentError,
     EncryptedArchiveError,
@@ -473,3 +474,69 @@ class TestMessageSize:
         )
         encoded = len(_as_wire_bytes(message.to_mime(sender="me@example.com")))
         assert encoded > limit
+
+
+class TestAnArchiveThatCannotBeReadToTheEnd:
+    """A scan that stops early must not report what it managed to see.
+
+    Both branches swallowed the failure and returned what they had, which reads
+    to the caller as "nothing blocked in here" -- the one answer this package
+    exists to be sure about. Two crafted-or-corrupt files got a blocked
+    executable past the gate, and the gate said nothing.
+    """
+
+    def test_a_corrupt_nested_zip_does_not_hide_what_follows_it(self, tmp_path):
+        """One flipped byte used to smuggle setup.exe out.
+
+        `except zipfile.BadZipFile` wrapped the whole member loop, so a bad CRC
+        raised while reading member 0 stopped the generator before member 1 --
+        the executable -- was ever yielded.
+        """
+        inner = write_zip(tmp_path, "inner.zip", ["notes.txt"])
+        blocked = write_file(tmp_path, "setup.exe", b"MZ")
+        outer = tmp_path / "outer.zip"
+        with zipfile.ZipFile(outer, "w", zipfile.ZIP_STORED) as archive:
+            archive.write(inner, "inner.zip")  # scanned first, and corrupted below
+            archive.write(blocked, "setup.exe")
+
+        whole = bytearray(outer.read_bytes())
+        at = whole.find(inner.read_bytes())
+        whole[at + 30] ^= 0xFF  # breaks the outer archive's CRC for inner.zip
+        outer.write_bytes(bytes(whole))
+
+        with pytest.raises(MailrunError) as caught:
+            check_attachments([Attachment.from_path(outer)], provider=GMAIL)
+        assert not isinstance(caught.value, type(None))
+
+    def test_a_truncated_tar_does_not_read_as_holding_nothing(self, tmp_path):
+        """A half-finished download used to pass with setup.exe plainly inside.
+
+        `tarfile.ReadError` does not distinguish "not a tar" from "a tar that
+        stops early" -- both raise it -- so the catch meant for the first
+        silently covered the second.
+        """
+        blocked = write_file(tmp_path, "setup.exe", b"MZ")
+        filler = write_file(tmp_path, "big.bin", b"C" * 200_000)
+        full = tmp_path / "full.tar"
+        with tarfile.open(full, "w") as archive:
+            archive.add(blocked, "setup.exe")
+            archive.add(filler, "big.bin")
+
+        half = tmp_path / "half.tar"
+        half.write_bytes(full.read_bytes()[:100_000])
+        assert b"setup.exe" in half.read_bytes(), "the name is right there in the file"
+
+        with pytest.raises(MailrunError):
+            check_attachments([Attachment.from_path(half)], provider=GMAIL)
+
+    def test_a_file_that_is_not_an_archive_at_all_is_still_judged_on_its_suffix(
+        self, tmp_path
+    ):
+        """The case the catch was written for, which must keep working.
+
+        A .zip that is not a zip has nothing to look inside. That is not a
+        failure to scan -- there is no archive -- so it passes on its own suffix
+        like any other file, rather than being refused as unscannable.
+        """
+        not_really = write_file(tmp_path, "notes.zip", b"this is plain text")
+        check_attachments([Attachment.from_path(not_really)], provider=GMAIL)

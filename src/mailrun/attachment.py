@@ -267,47 +267,90 @@ def _zip_member_names(
     source: Path | IO[bytes], name: str, *, depth: int = 0
 ) -> Iterator[str]:
     try:
-        with zipfile.ZipFile(source) as archive:
-            members = archive.infolist()
-            if any(member.flag_bits & _ZIP_ENCRYPTED_FLAG for member in members):
-                raise EncryptedArchiveError(
-                    f"{name} is password-protected; mail providers reject "
-                    f"encrypted archives because they cannot scan the contents"
-                )
-            for member in members:
-                yield member.filename
-                if _is_archive_name(member.filename):
-                    with archive.open(member) as nested:
-                        yield from _nested_member_names(
-                            nested, member.filename, outer=name, depth=depth
-                        )
+        archive = zipfile.ZipFile(source)
     except zipfile.BadZipFile:
         # Not actually a zip despite the suffix. Nothing to look inside; the
         # provider will judge it on its own suffix like any other file.
         return
+    # Only the open is allowed to mean "not an archive". This used to wrap the
+    # loop as well, and a `BadZipFile` raised while *reading* a member -- a bad
+    # CRC from one flipped byte -- was caught by the same clause and returned,
+    # ending the walk. Every member after the corrupt one went unlisted, and the
+    # caller was told the archive held nothing blocked. One byte was enough to
+    # carry setup.exe through the gate.
+    with archive:
+        members = archive.infolist()
+        if any(member.flag_bits & _ZIP_ENCRYPTED_FLAG for member in members):
+            raise EncryptedArchiveError(
+                f"{name} is password-protected; mail providers reject "
+                f"encrypted archives because they cannot scan the contents"
+            )
+        for member in members:
+            yield member.filename
+            if not _is_archive_name(member.filename):
+                continue
+            try:
+                with archive.open(member) as nested:
+                    yield from _nested_member_names(
+                        nested, member.filename, outer=name, depth=depth
+                    )
+            except (zipfile.BadZipFile, EOFError) as err:
+                raise UnscannableArchiveError(
+                    f"{member.filename} inside {name} cannot be read to the end "
+                    f"({err}); what cannot be scanned must not pass as what "
+                    f"holds nothing"
+                ) from err
 
 
 def _tar_member_names(
     source: Path | IO[bytes], name: str, *, depth: int = 0
 ) -> Iterator[str]:
     try:
-        # Opened inside the try because tarfile.open itself is what raises on a
-        # file that is not a tar -- the `with` cannot start until it returns.
+        # Opened inside its own try because tarfile.open itself is what raises on
+        # a file that is not a tar -- the `with` cannot start until it returns.
         opened = _open_tar(source)
-        with opened as archive:
-            for member in archive.getmembers():
-                yield member.name
-                if member.isfile() and _is_archive_name(member.name):
-                    nested = archive.extractfile(member)
-                    if nested is not None:
-                        yield from _nested_member_names(
-                            nested, member.name, outer=name, depth=depth
-                        )
-    except tarfile.ReadError:
-        # Not actually a tar despite the suffix -- the narrow error, not the whole
-        # TarError family: a genuinely broken archive must not read as "no members
-        # inside, nothing blocked".
+    except tarfile.ReadError as err:
+        if _looks_like_a_tar(source):
+            raise UnscannableArchiveError(
+                f"{name} carries a tar header but will not open ({err}); an "
+                f"archive that cannot be read must not pass as one that holds "
+                f"nothing"
+            ) from err
+        # Nothing here reads as a tar at all. Nothing to look inside; the
+        # provider will judge it on its own suffix like any other file.
         return
+    with opened as archive:
+        # Reading the members is a separate risk from opening, and used to share
+        # the clause above. The comment there claimed the narrow `ReadError` told
+        # "not a tar" apart from "a broken tar" -- tarfile draws no such line,
+        # raising ReadError for both, so the catch written for the first silently
+        # covered the second. A half-finished download of a tar holding setup.exe
+        # came back as "nothing blocked", with the name plainly in the bytes.
+        try:
+            members = archive.getmembers()
+        except (tarfile.ReadError, EOFError) as err:
+            raise UnscannableArchiveError(
+                f"{name} stops before its last member ({err}); an archive that "
+                f"cannot be read to the end must not pass as one that holds "
+                f"nothing"
+            ) from err
+        for member in members:
+            yield member.name
+            if not (member.isfile() and _is_archive_name(member.name)):
+                continue
+            nested = archive.extractfile(member)
+            if nested is None:
+                continue
+            try:
+                yield from _nested_member_names(
+                    nested, member.name, outer=name, depth=depth
+                )
+            except (tarfile.ReadError, EOFError) as err:
+                raise UnscannableArchiveError(
+                    f"{member.name} inside {name} cannot be read to the end "
+                    f"({err}); what cannot be scanned must not pass as what "
+                    f"holds nothing"
+                ) from err
 
 
 def _open_tar(source: Path | IO[bytes]) -> tarfile.TarFile:
@@ -315,6 +358,36 @@ def _open_tar(source: Path | IO[bytes]) -> tarfile.TarFile:
     if isinstance(source, Path):
         return tarfile.open(source)
     return tarfile.open(fileobj=source)
+
+
+# Offset and value of the format stamp POSIX puts in every tar header.
+_TAR_MAGIC_AT, _TAR_MAGIC = 257, b"ustar"
+
+
+def _looks_like_a_tar(source: Path | IO[bytes]) -> bool:
+    """Whether the first block carries a tar header, whatever `tarfile` said.
+
+    Asked only when `tarfile.open` has already refused, to tell its two answers
+    apart. It raises the same `ReadError` for "this was never a tar" and for "a
+    tar whose first header stops mid-field", and under `r:*` even flattens the
+    second into the first's wording, because it tries every compression before
+    giving up. The distinction matters: the first is an ordinary file to be
+    judged on its suffix; the second could hold anything, and reported nothing.
+
+    Only plain tars are recognised here, which is all that is needed -- a
+    compressed one that stops early fails inside the decompressor, and that is
+    `getmembers`' EOFError, not this.
+    """
+    try:
+        if isinstance(source, Path):
+            head = source.read_bytes()[: _TAR_MAGIC_AT + len(_TAR_MAGIC)]
+        else:
+            source.seek(0)
+            head = source.read(_TAR_MAGIC_AT + len(_TAR_MAGIC))
+            source.seek(0)
+    except OSError:
+        return False
+    return head[_TAR_MAGIC_AT : _TAR_MAGIC_AT + len(_TAR_MAGIC)] == _TAR_MAGIC
 
 
 def _nested_member_names(

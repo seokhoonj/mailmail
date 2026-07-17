@@ -7,6 +7,7 @@ what makes a batch cheap; used bare, each `send` opens and closes its own.
 
 import io
 import smtplib
+import ssl
 from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -168,7 +169,7 @@ class Mailer:
         try:
             if provider.security != "ssl":
                 smtp.ehlo()
-                smtp.starttls()
+                smtp.starttls(context=_verifying_tls_context())
             smtp.ehlo()
             smtp.login(self._account.username, password)
         except smtplib.SMTPAuthenticationError as err:
@@ -187,11 +188,33 @@ class Mailer:
         provider = self._account.provider
         if provider.security == "ssl":
             return smtplib.SMTP_SSL(
-                provider.smtp_host, provider.smtp_port, timeout=self._timeout_seconds
+                provider.smtp_host,
+                provider.smtp_port,
+                timeout = self._timeout_seconds,
+                context = _verifying_tls_context(),
             )
         return smtplib.SMTP(
             provider.smtp_host, provider.smtp_port, timeout=self._timeout_seconds
         )
+
+
+def _verifying_tls_context() -> ssl.SSLContext:
+    """A TLS context that checks the server is who it says it is.
+
+    Passed explicitly because smtplib's default is not this. Given no context,
+    `starttls` and `SMTP_SSL` build one with `ssl._create_stdlib_context()`,
+    which *is* `ssl._create_unverified_context`: `check_hostname` off,
+    `verify_mode` CERT_NONE. The handshake then succeeds against any
+    certificate, signed by anyone, for any name -- and `login()` sends the app
+    password through it.
+
+    That is not a theoretical hole. Anyone on the path -- hostile Wi-Fi, a
+    spoofed DNS answer, a transparent proxy -- answers for smtp.gmail.com with a
+    certificate they minted themselves and collects the password in the clear.
+    Every other precaution here guards the file on disk; this one is the only
+    thing guarding the wire, and it was off.
+    """
+    return ssl.create_default_context()
 
 
 def _hang_up(smtp: smtplib.SMTP) -> None:
