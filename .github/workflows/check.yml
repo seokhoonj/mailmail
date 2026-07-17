@@ -19,8 +19,12 @@ jobs:
         python-version: ["3.11", "3.13"]
 
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
+      - uses: actions/checkout@v7
+      # A full version rather than @v8: setup-uv stopped publishing major and
+      # minor tags at v8, so @v8 is a 404, not a pointer that follows patches.
+      # Bumping it is therefore manual, and the releases it moves through are
+      # mostly checksums for newly released uv versions.
+      - uses: astral-sh/setup-uv@v8.3.2
 
       - name: Install
         # A venv per matrix version, not `uv pip --system`: the runner's system
@@ -91,8 +95,8 @@ jobs:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v8.3.2
       - run: |
           uv venv
           uv pip install -e .
