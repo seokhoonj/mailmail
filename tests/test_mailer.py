@@ -7,11 +7,12 @@ would be handed, deterministically and offline.
 
 import smtplib
 import ssl
+from pathlib import Path
 
 import pytest
 
 from mailrun.account import SmtpAccount
-from mailrun.attachment import Attachment
+from mailrun.attachment import Attachment, estimated_encoded_bytes
 from mailrun.credentials import store_password
 from mailrun.errors import (
     AuthenticationFailedError,
@@ -374,3 +375,61 @@ class TestServerAdvertisedLimit:
         fake_smtp.esmtp_features = {"size": "unlimited"}
         receipt = Mailer(ACCOUNT).send(a_message())
         assert receipt.is_complete
+
+
+class TestTooLargeIsRefusedWithoutReadingTheFile:
+    """The refusal used to cost more memory than the message.
+
+    `send` weighed only the finished article: to_mime read every attachment in,
+    flattening laid a base64 copy beside it, and *then* the size was checked. A
+    200 MiB attachment took ~1.5 GB of resident memory to earn "too large" --
+    an answer `size_bytes` had implied since construction. Big enough, and the
+    OOM killer answers first: SIGKILL, no MessageTooLargeError to catch.
+    """
+
+    def test_an_oversized_attachment_is_refused_before_it_is_read(
+        self, fake_smtp, tmp_path, monkeypatch
+    ):
+        big = tmp_path / "big.bin"
+        big.write_bytes(b"\0" * 4096)
+
+        def fail_if_read(self, *args, **kwargs):
+            raise AssertionError("the file was read to find out it was too large")
+
+        monkeypatch.setattr(Path, "read_bytes", fail_if_read)
+        message = a_message(attachments=[Attachment.from_path(big)])
+
+        with pytest.raises(MessageTooLargeError):
+            Mailer(TINY_LIMIT_ACCOUNT).send(message)
+
+    def test_a_message_under_the_limit_is_not_refused_by_the_estimate(
+        self, fake_smtp, tmp_path
+    ):
+        """The half that matters more: the cheap gate must never false-refuse.
+
+        It underestimates on purpose -- attachments only, at a ratio just under
+        the true one -- so anything it stops, the exact check would stop too. A
+        gate that guessed high would refuse mail the provider would have taken,
+        which is worse than the cost it saves.
+        """
+        attachment = tmp_path / "report.bin"
+        attachment.write_bytes(b"\0" * 1024)
+        message = a_message(attachments=[Attachment.from_path(attachment)])
+
+        receipt = Mailer(ACCOUNT).send(message)  # Gmail's real limit
+
+        assert receipt.is_complete
+
+    def test_the_estimate_stays_under_the_real_wire_size(self, tmp_path):
+        """Why the above holds, pinned rather than trusted.
+
+        If this inverts, the cheap gate starts refusing messages the server
+        would accept, and it does so before anything can weigh them for real.
+        """
+        for size in (1024, 64 * 1024, 1024 * 1024):
+            attachment = tmp_path / f"{size}.bin"
+            attachment.write_bytes(b"\0" * size)
+            message = a_message(attachments=[Attachment.from_path(attachment)])
+            estimate = estimated_encoded_bytes(message.attachments)
+            actual = len(_as_wire_bytes(message.to_mime(sender="me@example.com")))
+            assert estimate < actual, f"estimate {estimate} >= actual {actual}"

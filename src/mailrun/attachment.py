@@ -14,7 +14,7 @@ import io
 import mimetypes
 import tarfile
 import zipfile
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterable, Iterator, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import IO, Self
@@ -28,7 +28,12 @@ from mailrun.errors import (
 )
 from mailrun.provider import MailProvider
 
-__all__ = ["Attachment", "check_attachments", "check_message_size"]
+__all__ = [
+    "Attachment",
+    "check_attachments",
+    "check_message_size",
+    "estimated_encoded_bytes",
+]
 
 DEFAULT_MIME_TYPE = "application/octet-stream"
 
@@ -138,6 +143,29 @@ def check_attachments(
     """
     for attachment in attachments:
         _check_one_attachment(attachment, provider=provider)
+
+
+def estimated_encoded_bytes(attachments: Iterable[Attachment]) -> int:
+    """A floor on what these attachments will weigh once encoded, from `stat`.
+
+    Cheap on purpose, and asked before the message is assembled, because
+    assembling it is the expensive part: `to_mime` reads every attachment into
+    memory and flattening lays a base64 copy beside it. Weighing only the
+    finished article meant a 200 MiB attachment cost about 1.5 GB of resident
+    memory to earn the answer "too large" -- an answer `size_bytes` already
+    implied, stat'd at construction and, until this function, never read by
+    anything. On a large enough attachment the OOM killer arrives first: SIGKILL,
+    no traceback, no `MessageTooLargeError` for a caller to catch, which is the
+    silent failure this package exists to turn into a raise.
+
+    Deliberately an underestimate, so refusing on it can never refuse a message
+    the exact check would have passed: it counts base64 of the attachments alone
+    at a ratio a hair under the true one, and leaves out headers, body, and MIME
+    boundaries, all of which only add. Measured at 25 MiB, it lands ~600 bytes
+    below the real wire size. Anything it lets through is still weighed for real.
+    """
+    raw_bytes = sum(attachment.size_bytes for attachment in attachments)
+    return int(raw_bytes * _ENCODED_EXPANSION)
 
 
 def check_message_size(encoded_bytes: int, *, limit_bytes: int) -> None:

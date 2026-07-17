@@ -17,7 +17,11 @@ from types import MappingProxyType, TracebackType
 from typing import Self
 
 from mailrun.account import SmtpAccount
-from mailrun.attachment import check_attachments, check_message_size
+from mailrun.attachment import (
+    check_attachments,
+    check_message_size,
+    estimated_encoded_bytes,
+)
 from mailrun.credentials import resolve_password
 from mailrun.errors import AuthenticationFailedError, RecipientRefusedError
 from mailrun.message import Message
@@ -130,6 +134,10 @@ class Mailer:
         """
         provider = self._account.provider
         check_attachments(message.attachments, provider=provider)
+        check_message_size(
+            estimated_encoded_bytes(message.attachments),
+            limit_bytes = provider.max_message_bytes,
+        )
         mime = message.to_mime(sender=self._account.username)
         payload = _as_wire_bytes(mime)
         check_message_size(len(payload), limit_bytes=provider.max_message_bytes)
