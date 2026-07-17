@@ -125,6 +125,9 @@ def store_password(
         The password is empty. Storing it would be worse than storing nothing:
         `resolve_password` would then report "no password stored" for an account
         that does have an entry, sending the reader to look for a missing file.
+        Or the existing file is not readable JSON, so the other accounts' entries
+        cannot be preserved -- `delete_password` documents the same cause for the
+        same read-modify-write, and this half of the pair had left it out.
     """
     password = password.strip()
     if not password:

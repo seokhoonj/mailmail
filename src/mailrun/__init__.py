@@ -19,7 +19,7 @@ Sending as a particular mailbox is `account="gmail"`; reusing one connection for
 a batch is `Mailer`.
 """
 
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable
 from pathlib import Path
 
 from mailrun.account import SmtpAccount
@@ -55,7 +55,7 @@ from mailrun.errors import (
 )
 from mailrun.mailer import Mailer, SendReceipt
 from mailrun.message import Message
-from mailrun.provider import GMAIL, NAVER, MailProvider
+from mailrun.provider import GMAIL, NAVER, MailProvider, SmtpSecurity
 
 __all__ = [
     "GMAIL",
@@ -83,6 +83,7 @@ __all__ = [
     "RecipientRefusedError",
     "SendReceipt",
     "SmtpAccount",
+    "SmtpSecurity",
     "UnknownAccountError",
     "UnknownContactError",
     "UnknownProviderError",
@@ -108,7 +109,7 @@ def send_mail(
     html: str | None = None,
     cc: str | Iterable[str] = (),
     bcc: str | Iterable[str] = (),
-    attachments: Sequence[Path | str] = (),
+    attachments: Iterable[Path | str] = (),
     account: str | None = None,
     config: Config | None = None,
 ) -> SendReceipt:

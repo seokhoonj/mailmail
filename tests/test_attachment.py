@@ -540,3 +540,57 @@ class TestAnArchiveThatCannotBeReadToTheEnd:
         """
         not_really = write_file(tmp_path, "notes.zip", b"this is plain text")
         check_attachments([Attachment.from_path(not_really)], provider=GMAIL)
+
+
+class TestTheAttachmentConstructorGuardsItsMimeType:
+    """`from_path` always guesses a well-formed type. The class is public.
+
+    Nothing tested the guard, so removing it would ship `Content-Type: pdf/` --
+    a malformed header reaching the server through the one package that promises
+    to catch such things before the connection opens.
+    """
+
+    def test_a_type_without_a_subtype_is_refused(self, tmp_path):
+        path = write_file(tmp_path, "report.pdf")
+        with pytest.raises(AttachmentError, match="maintype/subtype"):
+            Attachment(path=path, mime_type="pdf", size_bytes=path.stat().st_size)
+
+    def test_an_empty_subtype_is_refused(self, tmp_path):
+        path = write_file(tmp_path, "report.pdf")
+        with pytest.raises(AttachmentError, match="maintype/subtype"):
+            Attachment(path=path, mime_type="application/", size_bytes=1)
+
+    def test_the_error_points_at_the_factory_that_gets_it_right(self, tmp_path):
+        path = write_file(tmp_path, "report.pdf")
+        with pytest.raises(AttachmentError) as caught:
+            Attachment(path=path, mime_type="pdf", size_bytes=1)
+        assert "from_path" in str(caught.value)
+
+    def test_from_path_produces_one_that_passes(self, tmp_path):
+        attachment = Attachment.from_path(write_file(tmp_path, "report.pdf"))
+        assert attachment.mime_type == "application/pdf"
+
+
+class TestANestedArchiveTooBigToLookInside:
+    """Decompression is not bounded by the message-size limit.
+
+    A few hundred kilobytes of zip expands to gigabytes, so a nested member is
+    read only up to a cap and refused past it. The depth cap had a test; this
+    one did not, and a change that read the member anyway would reintroduce the
+    bomb while every existing test stayed green.
+    """
+
+    def test_a_member_past_the_scan_budget_is_refused(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("mailrun.attachment._MAX_NESTED_ARCHIVE_BYTES", 64)
+        inner = write_zip(tmp_path, "inner.zip", ["notes.txt"])
+        inner.write_bytes(inner.read_bytes() + b"0" * 128)
+        outer = write_zip_of_files(tmp_path, "outer.zip", [inner])
+
+        with pytest.raises(UnscannableArchiveError, match="inner.zip"):
+            check_attachments([Attachment.from_path(outer)], provider=GMAIL)
+
+    def test_a_member_within_it_is_scanned_as_usual(self, tmp_path):
+        inner = write_zip(tmp_path, "inner.zip", ["setup.exe"])
+        outer = write_zip_of_files(tmp_path, "outer.zip", [inner])
+        with pytest.raises(BlockedAttachmentError, match="setup.exe"):
+            check_attachments([Attachment.from_path(outer)], provider=GMAIL)

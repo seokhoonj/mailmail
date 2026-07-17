@@ -44,6 +44,13 @@ class Message:
         render HTML.
     to, cc, bcc
         Recipients. `bcc` is delivered but never written into a header.
+
+    Raises
+    ------
+    InvalidMessageError
+        A recipient field is a bare string, no recipient was given at all, the
+        subject is blank, or an address contains a line break. Also a
+        `ValueError`.
     """
 
     subject: str

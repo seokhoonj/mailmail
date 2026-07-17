@@ -82,7 +82,13 @@ class InvalidMessageError(MailrunError, ValueError):
 
 
 class AttachmentError(MailrunError):
-    """Base class for attachments the provider would reject."""
+    """A file cannot be attached, or the provider would refuse it.
+
+    Raised directly when the path is missing, is not a regular file, or the MIME
+    type is malformed -- none of which a provider ever sees. It is also the base
+    class for the provider's own refusals below, so one `except` covers both
+    kinds.
+    """
 
 
 class BlockedAttachmentError(AttachmentError):

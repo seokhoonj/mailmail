@@ -11,6 +11,7 @@ import tomllib
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any
 
 from mailrun.account import SmtpAccount
@@ -35,11 +36,24 @@ class Config:
         Every configured mailbox.
     address_book
         Alias table, possibly empty.
+
+    Both mappings are read-only, which `frozen=True` alone does not make them:
+    it guards the binding while leaving the caller's `dict` writable underneath,
+    and `Mailer` resolves every account through this one. The annotations already
+    read as read-only and now are.
     """
 
     default_account: str
     account_by_name: Mapping[str, SmtpAccount]
     address_book: AddressBook
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self, "account_by_name", MappingProxyType(dict(self.account_by_name))
+        )
+        object.__setattr__(
+            self, "address_book", MappingProxyType(dict(self.address_book))
+        )
 
     def resolve_account(self, name: str | None = None) -> SmtpAccount:
         """Look up an account by name, or the default when `name` is None.

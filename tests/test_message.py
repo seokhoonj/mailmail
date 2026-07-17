@@ -9,7 +9,7 @@ from mailrun.message import Message
 SENDER = "sender@example.com"
 
 
-def a_message(**overrides):
+def make_message(**overrides):
     fields = {
         "subject": "Weekly report",
         "body":    "Please see attached.",
@@ -20,19 +20,19 @@ def a_message(**overrides):
 
 class TestRecipientNormalization:
     def test_single_address_string_becomes_one_recipient(self):
-        assert a_message(to="lead@example.com").to == ("lead@example.com",)
+        assert make_message(to="lead@example.com").to == ("lead@example.com",)
 
     def test_string_is_not_exploded_into_characters(self):
         # A str is itself iterable; without normalization this is the bug where
         # "lead@example.com" becomes 16 single-character recipients.
-        assert len(a_message(to="lead@example.com").to) == 1
+        assert len(make_message(to="lead@example.com").to) == 1
 
     def test_list_of_addresses_is_kept_in_order(self):
-        message = a_message(to=["lead@example.com", "analyst@example.com"])
+        message = make_message(to=["lead@example.com", "analyst@example.com"])
         assert message.to == ("lead@example.com", "analyst@example.com")
 
     def test_recipients_span_to_cc_and_bcc(self):
-        message = a_message(
+        message = make_message(
             to="lead@example.com", cc="analyst@example.com", bcc="audit@example.com"
         )
         assert message.recipients == (
@@ -43,11 +43,11 @@ class TestRecipientNormalization:
 
     def test_message_without_recipients_is_rejected(self):
         with pytest.raises(InvalidMessageError, match="at least one recipient"):
-            a_message(to=())
+            make_message(to=())
 
     def test_message_without_a_subject_is_rejected(self):
         with pytest.raises(InvalidMessageError, match="subject"):
-            a_message(subject="   ")
+            make_message(subject="   ")
 
 
 class TestOneExceptGuardsTheWholeSend:
@@ -60,11 +60,11 @@ class TestOneExceptGuardsTheWholeSend:
 
     def test_a_message_with_no_recipient_raises_a_mailrun_error(self):
         with pytest.raises(MailrunError):
-            a_message(to=())
+            make_message(to=())
 
     def test_a_message_with_no_subject_raises_a_mailrun_error(self):
         with pytest.raises(MailrunError):
-            a_message(subject="")
+            make_message(subject="")
 
     def test_it_is_still_a_value_error_for_anyone_who_caught_that(self):
         # Both, deliberately: a bad argument has always been a ValueError, and
@@ -86,11 +86,11 @@ class TestAddressesWithLineBreaks:
     def test_a_line_break_in_any_recipient_field_is_refused(self, field):
         crafted = "audit@example.com>\r\nRCPT TO:<attacker@example.net"
         with pytest.raises(InvalidMessageError, match="line break"):
-            a_message(**{field: crafted})
+            make_message(**{field: crafted})
 
     def test_a_bare_newline_is_refused_too(self):
         with pytest.raises(InvalidMessageError, match="line break"):
-            a_message(bcc="audit@example.com\nBcc: attacker@example.net")
+            make_message(bcc="audit@example.com\nBcc: attacker@example.net")
 
     def test_the_refusal_happens_before_any_mime_is_built(self):
         # __post_init__, not to_mime: nothing should get as far as assembling.
@@ -102,72 +102,72 @@ class TestAddressesWithLineBreaks:
 
 class TestHeaders:
     def test_from_and_to_are_set_from_the_sender_and_recipients(self):
-        mime = a_message(to=["lead@example.com", "analyst@example.com"]).to_mime(
+        mime = make_message(to=["lead@example.com", "analyst@example.com"]).to_mime(
             sender=SENDER
         )
         assert mime["From"] == SENDER
         assert mime["To"] == "lead@example.com, analyst@example.com"
 
     def test_cc_is_written_as_a_header(self):
-        mime = a_message(cc="analyst@example.com").to_mime(sender=SENDER)
+        mime = make_message(cc="analyst@example.com").to_mime(sender=SENDER)
         assert mime["Cc"] == "analyst@example.com"
 
     def test_a_message_addressed_only_to_a_cc_has_no_to_header(self):
         # Not an empty one: `To:` with nothing after it is a malformed header,
         # and some filters read it as a spam signal.
-        mime = a_message(to=(), cc="analyst@example.com").to_mime(sender=SENDER)
+        mime = make_message(to=(), cc="analyst@example.com").to_mime(sender=SENDER)
         assert mime["To"] is None
         assert mime["Cc"] == "analyst@example.com"
 
     def test_a_message_with_no_cc_has_no_cc_header(self):
-        mime = a_message(cc=()).to_mime(sender=SENDER)
+        mime = make_message(cc=()).to_mime(sender=SENDER)
         assert mime["Cc"] is None
 
     def test_bcc_is_never_written_as_a_header(self):
         # Writing it would show every blind recipient to all the others.
-        message = a_message(bcc="audit@example.com")
+        message = make_message(bcc="audit@example.com")
         mime = message.to_mime(sender=SENDER)
         assert mime["Bcc"] is None
         assert "audit@example.com" not in mime.as_string()
         assert "audit@example.com" in message.recipients
 
     def test_message_id_is_stamped_with_the_sender_domain_not_the_hostname(self):
-        mime = a_message().to_mime(sender=SENDER)
+        mime = make_message().to_mime(sender=SENDER)
         assert mime["Message-ID"].endswith("@example.com>")
 
     def test_date_header_is_present(self):
-        assert a_message().to_mime(sender=SENDER)["Date"] is not None
+        assert make_message().to_mime(sender=SENDER)["Date"] is not None
 
 
 class TestKoreanText:
     """Non-ASCII needs no hand-rolled encoding; the stdlib handles it."""
 
     def test_korean_subject_survives_a_round_trip(self):
-        mime = a_message(subject="주간 보고서").to_mime(sender=SENDER)
+        mime = make_message(subject="주간 보고서").to_mime(sender=SENDER)
         assert mime["Subject"] == "주간 보고서"
 
     def test_korean_subject_is_not_left_as_raw_bytes_on_the_wire(self):
-        mime = a_message(subject="주간 보고서").to_mime(sender=SENDER)
+        mime = make_message(subject="주간 보고서").to_mime(sender=SENDER)
         assert "주간 보고서" not in mime.as_string()  # encoded per RFC 2047
 
     def test_korean_body_survives_a_round_trip(self):
-        mime = a_message(body="첨부 파일 확인 부탁드립니다.").to_mime(sender=SENDER)
+        mime = make_message(body="첨부 파일 확인 부탁드립니다.").to_mime(sender=SENDER)
         assert mime.get_body().get_content().strip() == "첨부 파일 확인 부탁드립니다."
 
 
 class TestParts:
     def test_plain_body_alone_is_not_multipart(self):
-        mime = a_message().to_mime(sender=SENDER)
+        mime = make_message().to_mime(sender=SENDER)
         assert not mime.is_multipart()
         assert mime.get_content().strip() == "Please see attached."
 
     def test_body_is_sent_verbatim_without_newline_rewriting(self):
-        mime = a_message(body="line one\nline two").to_mime(sender=SENDER)
+        mime = make_message(body="line one\nline two").to_mime(sender=SENDER)
         assert mime.get_content().strip() == "line one\nline two"
         assert "<br>" not in mime.get_content()
 
     def test_html_is_added_as_an_alternative_with_the_body_as_fallback(self):
-        mime = a_message(
+        mime = make_message(
             body="Plain fallback.", html="<p>Rich <b>markup</b>.</p>"
         ).to_mime(sender=SENDER)
         assert mime.get_content_type() == "multipart/alternative"
@@ -177,7 +177,7 @@ class TestParts:
     def test_attachment_arrives_with_its_guessed_type_and_filename(self, tmp_path):
         report = tmp_path / "report.pdf"
         report.write_bytes(b"%PDF-1.4 fake")
-        mime = a_message(
+        mime = make_message(
             attachments=(Attachment.from_path(report),)
         ).to_mime(sender=SENDER)
         attached = list(mime.iter_attachments())
@@ -189,7 +189,7 @@ class TestParts:
     def test_attachment_and_html_coexist(self, tmp_path):
         report = tmp_path / "report.pdf"
         report.write_bytes(b"%PDF-1.4 fake")
-        mime = a_message(
+        mime = make_message(
             html="<p>See attached.</p>", attachments=(Attachment.from_path(report),)
         ).to_mime(sender=SENDER)
         assert mime.get_content_type() == "multipart/mixed"

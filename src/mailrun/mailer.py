@@ -78,6 +78,19 @@ class Mailer:
 
     Outside a `with` block `send` still works; it just pays for a fresh
     connection each time.
+
+    Parameters
+    ----------
+    account
+        The mailbox to send as.
+    timeout_seconds
+        How long to wait on the SMTP socket before giving up.
+
+    Raises
+    ------
+    Constructing one raises nothing -- it opens no connection. Entering the
+    `with` block does: see `send` for what a session can raise, all of which
+    `__enter__` can raise too.
     """
 
     def __init__(
@@ -244,10 +257,13 @@ def _advertised_size_limit(smtp: smtplib.SMTP) -> int | None:
 
     The server's own number beats the provider constant, which can only be as
     fresh as the last time someone looked. `None` means the server named no
-    limit -- either it did not advertise SIZE at all, or it advertised zero,
-    which RFC 1870 Sec.3 defines as "no fixed maximum message size is in force".
-    Reading that zero literally would refuse every message a limitless server
-    was happy to take.
+    *usable* limit, by any of three routes: it did not advertise SIZE; it
+    advertised zero, which RFC 1870 Sec.3 defines as "no fixed maximum message
+    size is in force" and which read literally would refuse every message a
+    limitless server was happy to take; or it advertised something that is not a
+    number. The enumeration used to close after the first two and the third fell
+    through it, which costs a reader debugging a surprising `None` their trust in
+    the list. The provider constant still gates the size in all three cases.
     """
     advertised = smtp.esmtp_features.get("size")
     if advertised is None:

@@ -80,6 +80,12 @@ class Attachment:
         Full type, e.g. `application/pdf`. Guessed from the suffix.
     size_bytes
         Size on disk, before base64 encoding inflates it by roughly a third.
+
+    Raises
+    ------
+    AttachmentError
+        `mime_type` does not read 'maintype/subtype'. `from_path` always guesses
+        a well-formed one; this catches a hand-built `Attachment`.
     """
 
     path: Path
@@ -127,7 +133,7 @@ class Attachment:
 
 
 def check_attachments(
-    attachments: Sequence[Attachment], *, provider: MailProvider
+    attachments: Iterable[Attachment], *, provider: MailProvider
 ) -> None:
     """Raise if `provider` would reject any attachment.
 
@@ -210,7 +216,16 @@ def _check_one_attachment(attachment: Attachment, *, provider: MailProvider) -> 
 
 
 def _describe_blocked(attachment: Attachment, blocked: Sequence[str]) -> str:
-    if blocked == [attachment.filename]:
+    """Name what is blocked: the file itself, or what it was found to contain.
+
+    `blocked` is normalised before the comparison rather than compared as it
+    arrives. The signature says `Sequence`, and `("setup.exe",) == ["setup.exe"]`
+    is False, so a tuple took the second branch and produced "setup.exe, which
+    contains: setup.exe" -- telling the reader their file contains itself. It has
+    never happened, because the only caller returns a list; the hint is what the
+    next caller will read.
+    """
+    if list(blocked) == [attachment.filename]:
         return f"{attachment.filename} ({attachment.path.suffix})"
     inside = ", ".join(blocked)
     return f"{attachment.filename}, which contains: {inside}"
