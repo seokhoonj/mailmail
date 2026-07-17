@@ -3,12 +3,14 @@
 import re
 import tarfile
 import zipfile
+from pathlib import Path
 
 import pytest
 
 from mailrun.attachment import (
     _MAX_ARCHIVE_DEPTH,
     Attachment,
+    _looks_like_a_tar,
     check_attachments,
     check_message_size,
 )
@@ -594,3 +596,52 @@ class TestANestedArchiveTooBigToLookInside:
         outer = write_zip_of_files(tmp_path, "outer.zip", [inner])
         with pytest.raises(BlockedAttachmentError, match="setup.exe"):
             check_attachments([Attachment.from_path(outer)], provider=GMAIL)
+
+
+class TestSniffingATarHeaderReadsOnlyTheHeader:
+    """262 bytes, not the file.
+
+    `_looks_like_a_tar` runs when `tarfile.open` has already refused, to tell "not
+    a tar" from "a broken tar". It first read the whole file and sliced the front
+    off: a 300 MiB file peaked at 322 MiB resident to look at its first block.
+    That is the same fault as weighing a message by assembling it -- reintroduced
+    by the fix for it, on the same day.
+
+    It hides from a before/after memory reading, because the bytes are freed
+    before the call returns. So this asks the file how much of itself was read.
+    """
+
+    def test_a_large_file_is_not_read_past_its_head(self, tmp_path, monkeypatch):
+        big = tmp_path / "big.tar"
+        big.write_bytes(b"\0" * (4 * 1024 * 1024))
+
+        read_sizes: list[int | None] = []
+        real_open = Path.open
+
+        def spy_open(self, *args, **kwargs):
+            stream = real_open(self, *args, **kwargs)
+            real_read = stream.read
+
+            def spy_read(size=-1):
+                read_sizes.append(size)
+                return real_read(size)
+
+            stream.read = spy_read
+            return stream
+
+        monkeypatch.setattr(Path, "open", spy_open)
+        _looks_like_a_tar(big)
+
+        assert read_sizes, "the head was never read"
+        assert all(size == 262 for size in read_sizes), (
+            f"read {read_sizes} bytes; -1 or None means the whole file"
+        )
+
+    def test_it_still_recognises_a_real_tar(self, tmp_path):
+        path = tmp_path / "real.tar"
+        with tarfile.open(path, "w") as archive:
+            archive.add(write_file(tmp_path, "notes.txt"), "notes.txt")
+        assert _looks_like_a_tar(path) is True
+
+    def test_it_still_declines_a_file_that_is_not_one(self, tmp_path):
+        assert _looks_like_a_tar(write_file(tmp_path, "notes.tar", b"plain")) is False

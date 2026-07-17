@@ -426,17 +426,27 @@ def _looks_like_a_tar(source: Path | IO[bytes]) -> bool:
     Only plain tars are recognised here, which is all that is needed -- a
     compressed one that stops early fails inside the decompressor, and that is
     `getmembers`' EOFError, not this.
+
+    Reads the head and nothing else. The first cut of this wrote
+    `source.read_bytes()[:262]`, which loads the entire file to slice 262 bytes
+    off the front: a 300 MiB file peaked at 322 MiB resident to answer a question
+    about its first block, and a 2 GB one would have taken 2 GB. That is the same
+    fault as weighing a message by building it, on the same afternoon it was
+    fixed -- and it hid from a before/after RSS reading, because the memory is
+    handed back before the function returns.
     """
+    head_bytes = _TAR_MAGIC_AT + len(_TAR_MAGIC)
     try:
         if isinstance(source, Path):
-            head = source.read_bytes()[: _TAR_MAGIC_AT + len(_TAR_MAGIC)]
+            with source.open("rb") as head_stream:
+                head = head_stream.read(head_bytes)
         else:
             source.seek(0)
-            head = source.read(_TAR_MAGIC_AT + len(_TAR_MAGIC))
+            head = source.read(head_bytes)
             source.seek(0)
     except OSError:
         return False
-    return head[_TAR_MAGIC_AT : _TAR_MAGIC_AT + len(_TAR_MAGIC)] == _TAR_MAGIC
+    return head[_TAR_MAGIC_AT:] == _TAR_MAGIC
 
 
 def _nested_member_names(
