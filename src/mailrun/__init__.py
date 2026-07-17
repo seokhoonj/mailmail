@@ -141,8 +141,10 @@ def send_mail(
 
     Raises
     ------
-    Every error below descends from `MailrunError`, so one `except MailrunError`
-    guards the whole send.
+    Everything below descends from `MailrunError` except the last entry, which is
+    the standard library's own and is passed through untranslated. A caller who
+    must catch every way a send can fail writes
+    `except (MailrunError, smtplib.SMTPException, OSError)`.
 
     ConfigError, UnknownAccountError
         The configuration is missing or does not define the account.
@@ -153,8 +155,11 @@ def send_mail(
         contains a line break. Also a `ValueError`.
     AttachmentError
         An attachment path does not exist or is not a regular file.
-    BlockedAttachmentError, EncryptedArchiveError, MessageTooLargeError
-        The provider would reject the message; nothing was sent.
+    BlockedAttachmentError, UnscannableArchiveError, EncryptedArchiveError
+        The provider would reject the attachment -- a blocked file type, or an
+        archive that cannot be scanned to the bottom. Nothing was sent.
+    MessageTooLargeError
+        The message is over the server's limit; nothing was sent.
     MissingPasswordError, InsecureCredentialsError
         No password is stored for the account, or the credentials file is
         readable by someone other than its owner.
@@ -162,6 +167,12 @@ def send_mail(
         The server rejected the password; the message says what it wants instead.
     RecipientRefusedError
         The server refused every recipient.
+    smtplib.SMTPException, OSError
+        The session or the network failed -- the server hung up, DNS did not
+        answer, the connection timed out, or the server's certificate is not
+        trusted (`ssl.SSLCertVerificationError`, an `OSError`). Not a
+        `MailrunError`: these are the standard library's own, and wrapping them
+        would say less than they already do.
     """
     config = config if config is not None else load_config()
     smtp_account = config.resolve_account(account)

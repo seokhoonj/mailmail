@@ -17,6 +17,7 @@ import builtins
 import inspect
 import re
 import smtplib
+import ssl
 
 import pytest
 
@@ -63,12 +64,41 @@ class TestTheErrorsModuleIsHonestAboutItsReach:
         assert not issubclass(escaping, MailrunError)
 
 
+# The two functions a caller actually reaches for. Every claim below is asked of
+# both, because the first cut of this file asked only the places already fixed --
+# `check_attachments` and the errors module -- and passed while `send_mail`, the
+# most-read docstring in the package, still carried the promise the review had
+# just disproved. A gate drawn around the repair is not a gate.
+PUBLIC_SEND_APIS = [mailrun.send_mail, mailrun.Mailer.send]
+
+
 class TestDocumentedRaisesMatchWhatIsRaised:
     def test_check_attachments_names_the_unscannable_case(self):
         """It raises UnscannableArchiveError -- for a deep nest, an oversized
         member, or a corrupt archive -- and said nothing about it."""
         assert check_attachments.__doc__ is not None
         assert "UnscannableArchiveError" in check_attachments.__doc__
+
+    @pytest.mark.parametrize("api", PUBLIC_SEND_APIS)
+    def test_the_public_send_apis_name_it_too(self, api):
+        """`check_attachments` is not what anyone calls. These are, and the error
+        propagates through both."""
+        doc = inspect.getdoc(api)
+        assert doc is not None
+        assert "UnscannableArchiveError" in doc
+
+    @pytest.mark.parametrize("api", PUBLIC_SEND_APIS)
+    def test_they_do_not_claim_mailrun_error_catches_the_network(self, api):
+        doc = inspect.getdoc(api)
+        assert doc is not None
+        assert "guards the whole send" not in doc
+
+    @pytest.mark.parametrize("api", PUBLIC_SEND_APIS)
+    def test_they_name_what_escapes_the_hierarchy(self, api):
+        doc = inspect.getdoc(api)
+        assert doc is not None
+        for escaping in ("smtplib.SMTPException", "OSError"):
+            assert escaping in doc
 
     def test_every_error_the_public_api_documents_actually_exists(self):
         """A Raises section naming an exception the package does not export is a
@@ -80,12 +110,13 @@ class TestDocumentedRaisesMatchWhatIsRaised:
             if not doc or "Raises" not in doc:
                 continue
             documented.update(re.findall(r"\b([A-Z]\w+Error)\b", doc))
+        # A documented name is fine if the reader can reach it: from mailrun, or
+        # from a stdlib module the docstring names beside it.
+        reachable = (mailrun, builtins, smtplib, ssl)
         missing = [
             name
             for name in documented
-            if not hasattr(mailrun, name)
-            and not hasattr(smtplib, name)
-            and not hasattr(builtins, name)  # ValueError, OSError: resolvable already
+            if not any(hasattr(module, name) for module in reachable)
         ]
         assert not missing, f"documented but not exported: {sorted(missing)}"
 

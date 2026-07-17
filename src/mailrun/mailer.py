@@ -130,8 +130,11 @@ class Mailer:
 
         Raises
         ------
-        BlockedAttachmentError, EncryptedArchiveError, MessageTooLargeError
-            The provider would refuse the message.
+        BlockedAttachmentError, UnscannableArchiveError, EncryptedArchiveError
+            The provider would refuse the attachment -- a blocked file type, or
+            an archive that cannot be scanned to the bottom.
+        MessageTooLargeError
+            The message is over the server's limit.
         MissingPasswordError, InsecureCredentialsError, CredentialsError
             No password is stored, the credentials file is readable by others, or
             it is not readable JSON.
@@ -142,8 +145,12 @@ class Mailer:
             its own never tells the reader that an app password is what is wanted.
         RecipientRefusedError
             The server refused every recipient.
-        smtplib.SMTPException
-            The session itself failed (connection, protocol).
+        smtplib.SMTPException, OSError
+            The session or the network failed -- the server hung up, DNS did not
+            answer, the connection timed out, or the server's certificate is not
+            trusted (`ssl.SSLCertVerificationError`, an `OSError`). Not a
+            `MailrunError`: these are the standard library's own, and wrapping
+            them would say less than they already do.
         """
         provider = self._account.provider
         check_attachments(message.attachments, provider=provider)

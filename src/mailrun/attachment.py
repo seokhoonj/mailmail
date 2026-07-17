@@ -14,6 +14,7 @@ import io
 import mimetypes
 import tarfile
 import zipfile
+import zlib
 from collections.abc import Iterable, Iterator, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -45,6 +46,19 @@ _TAR_SUFFIXES = frozenset({".tar", ".tgz", ".tbz", ".tbz2", ".txz"})
 _COMPRESSED_SUFFIXES = frozenset({".gz", ".bz2", ".xz"})
 
 _ZIP_ENCRYPTED_FLAG = 0x1
+
+# Every way the standard library says "I could not read this archive through to
+# the end". Wider than the obvious two: zipfile does not wrap zlib, so a member
+# whose deflate stream is corrupt raises `zlib.error` rather than `BadZipFile`,
+# and an unknown compress_type raises `NotImplementedError`. Each of those used
+# to escape the package untranslated, past a docstring promising they could not.
+_UNREADABLE_MEMBER = (
+    zipfile.BadZipFile,
+    tarfile.ReadError,
+    EOFError,
+    zlib.error,
+    NotImplementedError,
+)
 
 # How much an attachment grows on the way out. base64 is 4/3 of the raw bytes,
 # and the encoder breaks the line every 76 characters, so each of those lines
@@ -317,7 +331,13 @@ def _zip_member_names(
 ) -> Iterator[str]:
     try:
         archive = zipfile.ZipFile(source)
-    except zipfile.BadZipFile:
+    except zipfile.BadZipFile as err:
+        if _looks_like_a_zip(source):
+            raise UnscannableArchiveError(
+                f"{name} carries a zip header but will not open ({err}); an "
+                f"archive that cannot be read must not pass as one that holds "
+                f"nothing"
+            ) from err
         # Not actually a zip despite the suffix. Nothing to look inside; the
         # provider will judge it on its own suffix like any other file.
         return
@@ -343,7 +363,7 @@ def _zip_member_names(
                     yield from _nested_member_names(
                         nested, member.filename, outer=name, depth=depth
                     )
-            except (zipfile.BadZipFile, EOFError) as err:
+            except _UNREADABLE_MEMBER as err:
                 raise UnscannableArchiveError(
                     f"{member.filename} inside {name} cannot be read to the end "
                     f"({err}); what cannot be scanned must not pass as what "
@@ -358,7 +378,7 @@ def _tar_member_names(
         # Opened inside its own try because tarfile.open itself is what raises on
         # a file that is not a tar -- the `with` cannot start until it returns.
         opened = _open_tar(source)
-    except tarfile.ReadError as err:
+    except (tarfile.ReadError, EOFError) as err:
         if _looks_like_a_tar(source):
             raise UnscannableArchiveError(
                 f"{name} carries a tar header but will not open ({err}); an "
@@ -377,12 +397,18 @@ def _tar_member_names(
         # came back as "nothing blocked", with the name plainly in the bytes.
         try:
             members = archive.getmembers()
-        except (tarfile.ReadError, EOFError) as err:
+        except _UNREADABLE_MEMBER as err:
             raise UnscannableArchiveError(
                 f"{name} stops before its last member ({err}); an archive that "
                 f"cannot be read to the end must not pass as one that holds "
                 f"nothing"
             ) from err
+        if not _reached_the_end_marker(archive):
+            raise UnscannableArchiveError(
+                f"{name} stops before its end-of-archive marker; an archive that "
+                f"cannot be read to the end must not pass as one that holds "
+                f"nothing"
+            )
         for member in members:
             yield member.name
             if not (member.isfile() and _is_archive_name(member.name)):
@@ -394,7 +420,7 @@ def _tar_member_names(
                 yield from _nested_member_names(
                     nested, member.name, outer=name, depth=depth
                 )
-            except (tarfile.ReadError, EOFError) as err:
+            except _UNREADABLE_MEMBER as err:
                 raise UnscannableArchiveError(
                     f"{member.name} inside {name} cannot be read to the end "
                     f"({err}); what cannot be scanned must not pass as what "
@@ -409,8 +435,24 @@ def _open_tar(source: Path | IO[bytes]) -> tarfile.TarFile:
     return tarfile.open(fileobj=source)
 
 
-# Offset and value of the format stamp POSIX puts in every tar header.
+# Offset and value of the format stamp POSIX puts in every tar header, and the
+# signature every zip local file header opens with.
 _TAR_MAGIC_AT, _TAR_MAGIC = 257, b"ustar"
+_ZIP_MAGIC_AT, _ZIP_MAGIC = 0, b"PK\x03\x04"
+
+
+def _looks_like_a_zip(source: Path | IO[bytes]) -> bool:
+    """Whether the file opens with a zip signature, whatever `zipfile` said.
+
+    The zip half of the question `_looks_like_a_tar` answers for tars, and it
+    matters more: `zipfile` raises `BadZipFile` reading "File is not a zip file"
+    when the end-of-central-directory record is missing, which is exactly what a
+    half-downloaded zip looks like. So the clause meant for "this was never a
+    zip" also covered "this is a zip that stops early", and a truncated
+    report.zip carrying setup.exe came back clean -- while the byte-identical
+    tar was refused, because that branch had been given this and this one had not.
+    """
+    return _head_matches(source, _ZIP_MAGIC_AT, _ZIP_MAGIC)
 
 
 def _looks_like_a_tar(source: Path | IO[bytes]) -> bool:
@@ -427,26 +469,65 @@ def _looks_like_a_tar(source: Path | IO[bytes]) -> bool:
     compressed one that stops early fails inside the decompressor, and that is
     `getmembers`' EOFError, not this.
 
-    Reads the head and nothing else. The first cut of this wrote
-    `source.read_bytes()[:262]`, which loads the entire file to slice 262 bytes
-    off the front: a 300 MiB file peaked at 322 MiB resident to answer a question
-    about its first block, and a 2 GB one would have taken 2 GB. That is the same
-    fault as weighing a message by building it, on the same afternoon it was
-    fixed -- and it hid from a before/after RSS reading, because the memory is
-    handed back before the function returns.
+    Only plain tars are recognised. A compressed one that stops early fails
+    inside the decompressor, which `_tar_member_names` catches at the open.
     """
-    head_bytes = _TAR_MAGIC_AT + len(_TAR_MAGIC)
+    return _head_matches(source, _TAR_MAGIC_AT, _TAR_MAGIC)
+
+
+# Every tar closes with two zeroed blocks. Reaching them is the only evidence
+# that the walk saw the whole archive.
+_TAR_END_MARKER = b"\0" * 1024
+
+
+def _reached_the_end_marker(archive: tarfile.TarFile) -> bool:
+    """Whether the member walk stopped at the archive's end, or at damage.
+
+    `getmembers()` raising is not the question, because it mostly does not.
+    `TarFile.next` re-raises a bad header only when it sits at offset 0; for a
+    header that goes wrong anywhere later it falls through and returns None, so
+    the walk ends quietly and hands back the members it happened to reach. One
+    flipped byte in the *middle* header of readme/middle/setup.exe therefore
+    scanned as `['readme.txt']` -- setup.exe never listed, never blocked, name
+    plainly in the bytes, and no exception for anything to catch.
+
+    So the archive is asked where it stopped. The end-of-archive marker is the
+    one place a complete walk can stop; anything else means the rest went
+    unread, which is not the same answer as "there was nothing there".
+    """
+    if archive.fileobj is None:
+        return False
+    try:
+        archive.fileobj.seek(archive.offset)
+        return archive.fileobj.read(len(_TAR_END_MARKER)) == _TAR_END_MARKER
+    except OSError:
+        return False
+
+
+def _head_matches(source: Path | IO[bytes], at: int, magic: bytes) -> bool:
+    """Whether `magic` sits at `at` in the first bytes of `source`.
+
+    Reads the head and nothing more. The first cut of the tar sniffer wrote
+    `source.read_bytes()[:262]`, which loads the whole file to slice 262 bytes
+    off the front: a 300 MiB file took a 300 MiB step in peak RSS to answer a
+    question about its first block, and a 2 GB one would have taken 2 GB. That
+    is the same fault as weighing a message by assembling it, reintroduced by
+    the fix for it on the same afternoon.
+
+    Shared by both sniffers rather than written twice, because writing the tar
+    one alone is how the zip branch came to be missing it at all.
+    """
     try:
         if isinstance(source, Path):
             with source.open("rb") as head_stream:
-                head = head_stream.read(head_bytes)
+                head = head_stream.read(at + len(magic))
         else:
             source.seek(0)
-            head = source.read(head_bytes)
+            head = source.read(at + len(magic))
             source.seek(0)
     except OSError:
         return False
-    return head[_TAR_MAGIC_AT:] == _TAR_MAGIC
+    return head[at:] == magic
 
 
 def _nested_member_names(

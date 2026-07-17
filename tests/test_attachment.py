@@ -645,3 +645,76 @@ class TestSniffingATarHeaderReadsOnlyTheHeader:
 
     def test_it_still_declines_a_file_that_is_not_one(self, tmp_path):
         assert _looks_like_a_tar(write_file(tmp_path, "notes.tar", b"plain")) is False
+
+
+class TestTheOtherWaysAnArchiveStopsEarly:
+    """Two holes the first cut of the truncation fix left open.
+
+    Both were found by a council reviewing that fix, and both are the same
+    mistake: hardening one branch and leaving the other, then trusting an
+    exception that does not arrive.
+    """
+
+    def test_a_truncated_zip_does_not_read_as_holding_nothing(self, tmp_path):
+        """The tar branch got a magic check and the zip branch did not.
+
+        `zipfile` raises BadZipFile reading "File is not a zip file" when the
+        end-of-central-directory record is missing -- which is what a
+        half-downloaded zip is. So the clause meant for "never was a zip" also
+        covered "is a zip, cut short", and a truncated report.zip carrying
+        setup.exe passed clean while the byte-identical tar was refused.
+        """
+        blocked = write_file(tmp_path, "setup.exe", b"MZ")
+        filler = write_file(tmp_path, "big.bin", b"C" * 200_000)
+        full = write_zip_of_files(tmp_path, "full.zip", [blocked, filler])
+
+        half = tmp_path / "half.zip"
+        whole = full.read_bytes()
+        half.write_bytes(whole[: len(whole) // 2])
+        assert b"setup.exe" in half.read_bytes(), "the name is right there"
+
+        with pytest.raises(UnscannableArchiveError):
+            check_attachments([Attachment.from_path(half)], provider=GMAIL)
+
+    def test_a_tar_whose_middle_header_is_damaged_is_refused(self, tmp_path):
+        """One byte, no exception, and every member after it goes unlisted.
+
+        `TarFile.next` re-raises a bad header only at offset 0. Damage anywhere
+        later falls through and returns None, so `getmembers()` ends quietly
+        with a short list. Nothing raised, so nothing here could catch it: the
+        walk simply never reached setup.exe, and the scan reported nothing
+        blocked.
+        """
+        readme = write_file(tmp_path, "readme.txt", b"hello")
+        middle = write_file(tmp_path, "middle.txt", b"world")
+        blocked = write_file(tmp_path, "setup.exe", b"MZ")
+        full = tmp_path / "full.tar"
+        with tarfile.open(full, "w", format=tarfile.USTAR_FORMAT) as archive:
+            for path in (readme, middle, blocked):
+                archive.add(path, path.name)
+
+        whole = bytearray(full.read_bytes())
+        whole[whole.find(b"middle.txt") + 140] ^= 0xFF  # breaks that header's checksum
+        garbled = tmp_path / "garbled.tar"
+        garbled.write_bytes(bytes(whole))
+
+        with tarfile.open(garbled) as archive:
+            assert [m.name for m in archive.getmembers()] == ["readme.txt"], (
+                "tarfile is expected to stop quietly -- that is the whole problem"
+            )
+        assert b"setup.exe" in garbled.read_bytes()
+
+        with pytest.raises(UnscannableArchiveError):
+            check_attachments([Attachment.from_path(garbled)], provider=GMAIL)
+
+    def test_a_whole_tar_is_still_walked_to_the_end(self, tmp_path):
+        """The end-marker check must not refuse an archive that is simply fine."""
+        readme = write_file(tmp_path, "readme.txt", b"hello")
+        path = tmp_path / "clean.tar"
+        with tarfile.open(path, "w") as archive:
+            archive.add(readme, "readme.txt")
+        check_attachments([Attachment.from_path(path)], provider=GMAIL)
+
+    def test_a_file_that_is_not_a_zip_at_all_still_passes(self, tmp_path):
+        not_really = write_file(tmp_path, "notes.zip", b"plain text")
+        check_attachments([Attachment.from_path(not_really)], provider=GMAIL)

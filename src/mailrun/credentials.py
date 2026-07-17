@@ -25,6 +25,7 @@ correctly.
 
 import json
 import os
+import re
 import stat
 from pathlib import Path
 
@@ -178,8 +179,17 @@ def _password_from_env(account: SmtpAccount) -> str | None:
 
     The bare name still works, and is still the right thing to export when one
     account is configured or when every account shares a password.
+
+    Anything a shell will not take in a variable name folds to `_`, so the name
+    that is read is the name that can be exported. TOML allows `-` and `.` in a
+    bare key, and `[accounts.me-naver]` is an ordinary thing to write -- but
+    `export MAILRUN_PASSWORD_ME-NAVER=...` is "not a valid identifier", so
+    reading that name literally could never match. It would fall to the bare name
+    and hand one service's password to another's server: the exact disclosure
+    above, back again, with this function claiming to prevent it.
     """
-    per_account = os.environ.get(f"{PASSWORD_ENV_VAR}_{account.name.upper()}")
+    suffix = re.sub(r"[^A-Z0-9]", "_", account.name.upper())
+    per_account = os.environ.get(f"{PASSWORD_ENV_VAR}_{suffix}")
     return per_account or os.environ.get(PASSWORD_ENV_VAR)
 
 
