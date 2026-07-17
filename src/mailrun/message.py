@@ -20,9 +20,10 @@ __all__ = ["Message"]
 class Message:
     """Subject, body, recipients, and attachments.
 
-    The constructor is strict: recipients are tuples, and a bare string is
-    refused rather than accepted. `Message.compose` is the loose door, where a
-    lone address may be a plain string.
+    The constructor is strict where it counts: a bare string is refused rather
+    than accepted, while any other iterable is normalised to the tuple the field
+    promises. `Message.compose` is the loose door, where a lone address may be a
+    plain string.
 
     The split is not fussiness. A dataclass field annotation is also its
     `__init__` parameter type -- one site, two roles -- so a field cannot be

@@ -138,8 +138,14 @@ def check_attachments(
     ------
     BlockedAttachmentError
         A file, or a member of an archive, has a suffix the provider blocks.
+    UnscannableArchiveError
+        An archive cannot be looked inside to the bottom: it nests deeper than
+        the limit, a member expands past what could be carried anyway, or it is
+        corrupt or cut short. What cannot be scanned is refused rather than
+        waved through as holding nothing.
     EncryptedArchiveError
-        A zip is password-protected, which providers reject unopened.
+        A zip is password-protected, which providers reject unopened. A kind of
+        `UnscannableArchiveError`, so catching that name catches both.
     """
     for attachment in attachments:
         _check_one_attachment(attachment, provider=provider)

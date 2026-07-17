@@ -9,11 +9,11 @@
         attachments = ["report.xlsx"],
     )
 
-`to` takes addresses, address-book aliases, or both, and falls back to the
-configured default when not mentioned. Anything the provider would reject -- a
-blocked file type, an archive it cannot scan, a message over the server's size
-limit -- raises before a connection is opened, so failures land at the call site
-instead of arriving later as a bounce.
+`to` takes addresses, address-book aliases, or both, and is required -- nothing
+is ever addressed on your behalf. Anything the provider would reject -- a blocked
+file type, an archive it cannot scan, a message over the server's size limit --
+raises before a connection is opened, so failures land at the call site instead
+of arriving later as a bounce.
 
 Sending as a particular mailbox is `account="gmail"`; reusing one connection for
 a batch is `Mailer`.

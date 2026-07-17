@@ -1,7 +1,24 @@
 """Exceptions raised by mailrun.
 
-Every error the package raises descends from `MailrunError`, so a caller can
-guard a whole send with one `except` without catching unrelated failures.
+Every error mailrun *defines* descends from `MailrunError`, so one `except`
+catches everything this package judges: a blocked attachment, an unknown alias,
+a message the server would refuse, a password that is missing or badly kept.
+
+It does not catch everything a send can raise, and used to claim it did. Two
+kinds pass through untranslated, because they are the standard library's own
+and inventing a wrapper for them would say less than they already do:
+
+    smtplib.SMTPException     the session failed -- the server hung up, spoke
+                              something unexpected, dropped STARTTLS
+    OSError                   the network did -- DNS, refused connection,
+                              timeout; `ssl.SSLCertVerificationError` when the
+                              server is not who it says it is
+
+`AuthenticationFailedError` is the one session failure that is translated, and
+the exception's own docstring says why. A caller who must catch every way a send
+can fail writes:
+
+    except (MailrunError, smtplib.SMTPException, OSError)
 """
 
 __all__ = [
