@@ -15,8 +15,10 @@ jobs:
       fail-fast: false
       matrix:
         # The floor and the current release. requires-python says >=3.11, so 3.11
-        # is the version that claim has to actually hold on.
-        python-version: ["3.11", "3.13"]
+        # is the version that claim has to actually hold on, and the upper end has
+        # to keep moving with CPython: left behind, it stops being the boundary of
+        # what is promised and quietly becomes a version nobody runs.
+        python-version: ["3.11", "3.14"]
 
     steps:
       - uses: actions/checkout@v7
