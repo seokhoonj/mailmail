@@ -13,10 +13,10 @@ from mailrun.attachment import (
     check_message_size,
 )
 from mailrun.errors import (
-    MailrunError,
     AttachmentError,
     BlockedAttachmentError,
     EncryptedArchiveError,
+    MailrunError,
     MessageTooLargeError,
     UnscannableArchiveError,
 )

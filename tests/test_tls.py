@@ -134,9 +134,11 @@ class TestAServerNobodyVouchesFor:
         monkeypatch.setenv("MAILRUN_PASSWORD", "app-password")
         message = Message.compose(subject="s", body="b", to="lead@example.com")
 
-        with pytest.raises(ssl.SSLCertVerificationError):
-            with Mailer(account_pointed_at(impostor.port)) as mailer:
-                mailer.send(message)
+        with (
+            pytest.raises(ssl.SSLCertVerificationError),
+            Mailer(account_pointed_at(impostor.port)) as mailer,
+        ):
+            mailer.send(message)
 
         assert not impostor.handshake_succeeded
 
@@ -150,8 +152,10 @@ class TestAServerNobodyVouchesFor:
         monkeypatch.setenv("MAILRUN_PASSWORD", "app-password")
         message = Message.compose(subject="s", body="b", to="lead@example.com")
 
-        with pytest.raises(Exception):
-            with Mailer(account_pointed_at(impostor.port)) as mailer:
-                mailer.send(message)
+        with (
+            pytest.raises(ssl.SSLCertVerificationError),
+            Mailer(account_pointed_at(impostor.port)) as mailer,
+        ):
+            mailer.send(message)
 
         assert impostor.credentials_seen == []
