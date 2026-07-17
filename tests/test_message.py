@@ -195,3 +195,47 @@ class TestParts:
         assert mime.get_content_type() == "multipart/mixed"
         assert len(list(mime.iter_attachments())) == 1
         assert mime.get_body(("html",)) is not None
+
+
+class TestTheConstructorRefusesABareString:
+    """The guard with a docstring, an exception message, and no test.
+
+    `str` is an iterable of characters, so a `to` that accepts one turns
+    `to="lead@example.com"` into sixteen single-character recipients -- silently,
+    and sixteen times over the wire. `_refuse_bare_string` exists to stop that,
+    and everything explained it except the suite: disabling the guard left all
+    241 tests green while `Message(to="lead@example.com").to` had sixteen
+    entries. A guard nothing tests is a guard the next reader may delete.
+    """
+
+    def test_a_bare_string_recipient_is_refused(self):
+        with pytest.raises(InvalidMessageError):
+            Message(subject="s", body="b", to="lead@example.com")  # type: ignore[arg-type]
+
+    def test_the_refusal_says_what_would_have_happened(self):
+        with pytest.raises(InvalidMessageError) as caught:
+            Message(subject="s", body="b", to="lead@example.com")  # type: ignore[arg-type]
+        message = str(caught.value)
+        assert "per character" in message
+        assert "Message.compose" in message  # the door that does take a string
+
+    def test_a_bare_string_cc_is_refused_too(self):
+        with pytest.raises(InvalidMessageError):
+            Message(subject="s", body="b", to=("a@b.com",), cc="c@d.com")  # type: ignore[arg-type]
+
+    def test_a_bare_string_bcc_is_refused_too(self):
+        with pytest.raises(InvalidMessageError):
+            Message(subject="s", body="b", to=("a@b.com",), bcc="c@d.com")  # type: ignore[arg-type]
+
+    def test_a_tuple_of_one_is_what_it_wanted(self):
+        message = Message(subject="s", body="b", to=("lead@example.com",))
+        assert message.to == ("lead@example.com",)
+
+    def test_any_other_iterable_is_normalised_rather_than_refused(self):
+        """Strictness is about `str` alone, not about tuples.
+
+        A list is what a caller naturally writes and cannot be silently wrong, so
+        it is coerced to the tuple the field promises rather than rejected.
+        """
+        message = Message(subject="s", body="b", to=["lead@example.com"])  # type: ignore[arg-type]
+        assert message.to == ("lead@example.com",)

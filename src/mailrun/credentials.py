@@ -70,8 +70,13 @@ def default_credentials_path() -> Path:
 def resolve_password(account: SmtpAccount, *, path: Path | None = None) -> str:
     """Find the account's password.
 
-    Checks `MAILRUN_PASSWORD` first, so a one-off or a container can supply the
+    Checks the environment first, so a one-off or a container can supply the
     password without a file, then the credentials file.
+
+    `MAILRUN_PASSWORD_<ACCOUNT>` is read before the bare `MAILRUN_PASSWORD` --
+    with two accounts configured, the bare name cannot say which mailbox it is
+    for, and answering with it anyway sends one service's app password to the
+    other's server. See `_password_from_env`.
 
     Raises
     ------
@@ -82,7 +87,7 @@ def resolve_password(account: SmtpAccount, *, path: Path | None = None) -> str:
     CredentialsError
         The file exists but is not readable JSON.
     """
-    from_env = os.environ.get(PASSWORD_ENV_VAR)
+    from_env = _password_from_env(account)
     if from_env:
         return from_env
     path = path if path is not None else default_credentials_path()
@@ -151,6 +156,28 @@ def delete_password(account: SmtpAccount, *, path: Path | None = None) -> None:
     if password_by_username.pop(account.username, None) is None:
         return
     _write_password_by_username(path, password_by_username)
+
+
+def _password_from_env(account: SmtpAccount) -> str | None:
+    """The password the environment offers for this account, if any.
+
+    `MAILRUN_PASSWORD_NAVER` beats a bare `MAILRUN_PASSWORD`, because the bare
+    name is only unambiguous while one account exists. `resolve_password` used
+    to read it and return before looking at its `account` argument at all, so
+    with gmail and naver both configured -- which the config file positively
+    expects, demanding `default_account` once there are two -- one exported
+    password was handed to whichever server was asked.
+
+    That is a disclosure, not an inconvenience: export the variable for a Gmail
+    send, then send as naver from the same shell, and the Gmail app password
+    goes to Naver's server and lands in a failed-auth log there. The send fails
+    535, so nothing tells the sender their secret left the building.
+
+    The bare name still works, and is still the right thing to export when one
+    account is configured or when every account shares a password.
+    """
+    per_account = os.environ.get(f"{PASSWORD_ENV_VAR}_{account.name.upper()}")
+    return per_account or os.environ.get(PASSWORD_ENV_VAR)
 
 
 def _load_password_by_username(path: Path) -> dict[str, str]:

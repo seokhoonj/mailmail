@@ -329,3 +329,42 @@ class TestDefaultLocation:
         monkeypatch.setenv("MAILRUN_CREDENTIALS", "/tmp/other.json")
         monkeypatch.setenv("XDG_CONFIG_HOME", "/elsewhere/config")
         assert str(default_credentials_path()) == "/tmp/other.json"
+
+
+class TestTheEnvironmentPasswordKnowsWhichAccountItIsFor:
+    """One exported password used to answer for every provider.
+
+    `resolve_password(account)` read the bare `MAILRUN_PASSWORD` and returned
+    before it ever looked at `account`. With two mailboxes configured -- which
+    the config file expects, demanding `default_account` once there are two --
+    exporting a Gmail app password for a one-off send and then sending as naver
+    from the same shell transmitted the Gmail secret to Naver's server, where it
+    lands in a failed-auth log. The send fails 535, so nobody learns of it.
+    """
+
+    def test_the_account_specific_name_wins(self, credentials_path, monkeypatch):
+        monkeypatch.setenv("MAILRUN_PASSWORD", "the-gmail-one")
+        monkeypatch.setenv("MAILRUN_PASSWORD_NAVER", "the-naver-one")
+        assert resolve_password(NAVER_ACCOUNT) == "the-naver-one"
+
+    def test_each_account_gets_its_own(self, credentials_path, monkeypatch):
+        monkeypatch.setenv("MAILRUN_PASSWORD_NAVER", "the-naver-one")
+        monkeypatch.setenv("MAILRUN_PASSWORD_GMAIL", "the-gmail-one")
+        assert resolve_password(NAVER_ACCOUNT) == "the-naver-one"
+        assert resolve_password(GMAIL_ACCOUNT) == "the-gmail-one"
+
+    def test_one_accounts_secret_does_not_answer_for_another(
+        self, credentials_path, monkeypatch
+    ):
+        """The disclosure, stated as the thing that must not happen."""
+        monkeypatch.setenv("MAILRUN_PASSWORD_GMAIL", "the-gmail-one")
+        with pytest.raises(MissingPasswordError):
+            resolve_password(NAVER_ACCOUNT)
+
+    def test_the_bare_name_still_serves_when_it_is_all_there_is(
+        self, credentials_path, monkeypatch
+    ):
+        # The single-account case, and the shared-password case: unchanged.
+        monkeypatch.setenv("MAILRUN_PASSWORD", "the-only-one")
+        assert resolve_password(NAVER_ACCOUNT) == "the-only-one"
+        assert resolve_password(GMAIL_ACCOUNT) == "the-only-one"
