@@ -51,6 +51,7 @@ from mailrun.errors import (
     UnknownAccountError,
     UnknownContactError,
     UnknownProviderError,
+    UnscannableArchiveError,
 )
 from mailrun.mailer import Mailer, SendReceipt
 from mailrun.message import Message
@@ -85,6 +86,7 @@ __all__ = [
     "UnknownAccountError",
     "UnknownContactError",
     "UnknownProviderError",
+    "UnscannableArchiveError",
     "default_config_path",
     "default_credentials_path",
     "delete_password",

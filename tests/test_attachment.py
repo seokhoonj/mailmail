@@ -1,5 +1,6 @@
 """Provider attachment rules are enforced locally, before anything is sent."""
 
+import re
 import tarfile
 import zipfile
 
@@ -16,7 +17,10 @@ from mailrun.errors import (
     BlockedAttachmentError,
     EncryptedArchiveError,
     MessageTooLargeError,
+    UnscannableArchiveError,
 )
+from mailrun.mailer import _as_wire_bytes
+from mailrun.message import Message
 from mailrun.provider import GMAIL, NAVER
 
 
@@ -329,8 +333,29 @@ class TestNestedArchives:
         archive = write_zip(tmp_path, "deep.zip", ["q1.pdf"])
         for level in range(_MAX_ARCHIVE_DEPTH + 1):
             archive = write_zip_of_files(tmp_path, f"wrap{level}.zip", [archive])
-        with pytest.raises(EncryptedArchiveError, match="deep"):
+        with pytest.raises(UnscannableArchiveError, match="deep"):
             check_attachments([Attachment.from_path(archive)], provider=GMAIL)
+
+    def test_a_deep_nest_is_not_reported_as_password_protected(self, tmp_path):
+        # It used to raise EncryptedArchiveError, which sent whoever hit it
+        # looking for a password that was never there. Nothing here is encrypted.
+        archive = write_zip(tmp_path, "deep.zip", ["q1.pdf"])
+        for level in range(_MAX_ARCHIVE_DEPTH + 1):
+            archive = write_zip_of_files(tmp_path, f"wrap{level}.zip", [archive])
+        with pytest.raises(UnscannableArchiveError) as caught:
+            check_attachments([Attachment.from_path(archive)], provider=GMAIL)
+        assert not isinstance(caught.value, EncryptedArchiveError)
+        assert "password" not in str(caught.value)
+
+    def test_an_encrypted_zip_is_still_the_narrower_error(self, tmp_path):
+        # Encryption stays its own name -- it is the one unscannable reason the
+        # sender can actually do something about.
+        archive = write_encrypted_zip(tmp_path, "secret.zip")
+        with pytest.raises(EncryptedArchiveError):
+            check_attachments([Attachment.from_path(archive)], provider=GMAIL)
+
+    def test_both_reasons_share_one_name_a_caller_can_catch(self, tmp_path):
+        assert issubclass(EncryptedArchiveError, UnscannableArchiveError)
 
 
 class TestArchiveNamesAreNotFilenames:
@@ -399,4 +424,52 @@ class TestMessageSize:
         message = str(caught.value)
         assert "38.1 MiB" in message  # what the message actually weighs
         assert "34.2 MiB" in message  # what the server accepts
-        assert "25.7 MiB" in message  # the raw-file budget that implies
+        assert "25.0 MiB" in message  # the raw-file budget that implies
+
+    def test_a_file_of_the_advised_size_actually_fits(self, tmp_path):
+        """The number in the message is a number a reader can act on.
+
+        The advice used to divide by 4/3, forgetting that base64 breaks the line
+        every 76 characters and each line carries a CRLF. It told a caller their
+        files could total 25.7 MiB against Gmail when 25.0 is the truth -- so
+        believing it earned a bounce, from the one figure in this package whose
+        entire job is to prevent one.
+
+        What is tested is what a reader actually reads: the MiB figure in the
+        error, not the byte arithmetic behind it.
+        """
+        limit = GMAIL.max_message_bytes
+        with pytest.raises(MessageTooLargeError) as caught:
+            check_message_size(limit + 1, limit_bytes=limit)
+        advised = re.search(r"total roughly ([\d.]+) MiB", str(caught.value))
+        assert advised, f"the error states no budget: {caught.value}"
+        advised_mib = float(advised.group(1))
+
+        payload = tmp_path / "big.bin"
+        payload.write_bytes(b"\0" * int(advised_mib * 1024 * 1024))
+        message = Message.compose(
+            subject="s",
+            body="b",
+            to="lead@example.com",
+            attachments=(Attachment.from_path(payload),),
+        )
+        encoded = len(_as_wire_bytes(message.to_mime(sender="me@example.com")))
+        assert encoded <= limit, (
+            f"the error advises {advised_mib} MiB of files, which encode to "
+            f"{encoded:,} -- past the {limit:,} the server takes"
+        )
+
+    def test_the_old_four_thirds_advice_would_not_have_fitted(self, tmp_path):
+        # Locks down the bug rather than the fix: the discarded formula is still
+        # arithmetic anyone might reach for, so name why it is wrong.
+        limit = GMAIL.max_message_bytes
+        payload = tmp_path / "old.bin"
+        payload.write_bytes(b"\0" * (limit * 3 // 4))
+        message = Message.compose(
+            subject="s",
+            body="b",
+            to="lead@example.com",
+            attachments=(Attachment.from_path(payload),),
+        )
+        encoded = len(_as_wire_bytes(message.to_mime(sender="me@example.com")))
+        assert encoded > limit

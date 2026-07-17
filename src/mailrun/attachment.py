@@ -24,6 +24,7 @@ from mailrun.errors import (
     BlockedAttachmentError,
     EncryptedArchiveError,
     MessageTooLargeError,
+    UnscannableArchiveError,
 )
 from mailrun.provider import MailProvider
 
@@ -39,6 +40,15 @@ _TAR_SUFFIXES = frozenset({".tar", ".tgz", ".tbz", ".tbz2", ".txz"})
 _COMPRESSED_SUFFIXES = frozenset({".gz", ".bz2", ".xz"})
 
 _ZIP_ENCRYPTED_FLAG = 0x1
+
+# How much an attachment grows on the way out. base64 is 4/3 of the raw bytes,
+# and the encoder breaks the line every 76 characters, so each of those lines
+# also carries a CRLF. Measured against a real 25 MiB attachment: 1.3684.
+#
+# The obvious 4/3 forgets the line breaks, and the difference is not academic --
+# it told a caller their files could total 25.7 MiB against Gmail when the true
+# ceiling is 25.0, so anyone who trusted the number was handed a bounce.
+_ENCODED_EXPANSION = (4 / 3) * (78 / 76)
 
 # How far to descend through archives-inside-archives. Deep enough for anything
 # an honest sender produces; shallow enough that a nest built to exhaust the
@@ -149,9 +159,9 @@ def check_message_size(encoded_bytes: int, *, limit_bytes: int) -> None:
         return
     raise MessageTooLargeError(
         f"encoded message is {_as_mib(encoded_bytes)} but the server accepts at "
-        f"most {_as_mib(limit_bytes)}; attachments grow about a third when "
-        f"encoded, so the raw files must total roughly "
-        f"{_as_mib(limit_bytes * 3 // 4)} or less"
+        f"most {_as_mib(limit_bytes)}; attachments grow by about 37% on the way "
+        f"out, so the raw files must total roughly "
+        f"{_as_mib(int(limit_bytes / _ENCODED_EXPANSION))} or less"
     )
 
 
@@ -233,8 +243,10 @@ def _archive_member_names(
     Raises
     ------
     EncryptedArchiveError
-        A zip is password-protected, or the nest is too deep or too large to
-        scan. Providers reject what they cannot look inside, and so does this.
+        A zip is password-protected.
+    UnscannableArchiveError
+        The nest is too deep, or a nested member too large, to scan to the
+        bottom. Providers reject what they cannot look inside, and so does this.
     """
     suffix = Path(name).suffix.lower()
     if suffix in _ZIP_SUFFIXES:
@@ -314,14 +326,14 @@ def _nested_member_names(
     depth and the size are capped here rather than left to the caller.
     """
     if depth + 1 >= _MAX_ARCHIVE_DEPTH:
-        raise EncryptedArchiveError(
+        raise UnscannableArchiveError(
             f"{outer} nests archives more than {_MAX_ARCHIVE_DEPTH} deep at "
             f"{name}; mail providers reject what they cannot scan to the bottom, "
             f"and neither this nor they will unpack it further"
         )
     payload = nested.read(_MAX_NESTED_ARCHIVE_BYTES + 1)
     if len(payload) > _MAX_NESTED_ARCHIVE_BYTES:
-        raise EncryptedArchiveError(
+        raise UnscannableArchiveError(
             f"{name} inside {outer} expands past "
             f"{_as_mib(_MAX_NESTED_ARCHIVE_BYTES)}, so it cannot be scanned "
             f"without unpacking more than the message could ever carry"

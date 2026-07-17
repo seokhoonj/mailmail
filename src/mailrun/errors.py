@@ -22,6 +22,7 @@ __all__ = [
     "UnknownAccountError",
     "UnknownContactError",
     "UnknownProviderError",
+    "UnscannableArchiveError",
 ]
 
 
@@ -71,8 +72,20 @@ class BlockedAttachmentError(AttachmentError):
     """The provider blocks this file type, so the send would bounce."""
 
 
-class EncryptedArchiveError(AttachmentError):
-    """The archive is password-protected; providers reject what they cannot scan."""
+class UnscannableArchiveError(AttachmentError):
+    """The archive cannot be looked inside, so what it holds is unknown.
+
+    Providers reject what they cannot scan, and so does this -- "we could not
+    look" must not read as "nothing in there".
+    """
+
+
+class EncryptedArchiveError(UnscannableArchiveError):
+    """The archive is password-protected, so no scanner can open it.
+
+    One reason among several for being unscannable, and the only one worth its
+    own name: it is the one the sender can do something about.
+    """
 
 
 class MessageTooLargeError(MailrunError):
