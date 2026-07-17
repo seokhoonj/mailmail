@@ -173,6 +173,35 @@ class TestFileItself:
             load_config(write_config(tmp_path, 'default_account = "naver"\n'))
 
 
+class TestARetiredDefaultsTable:
+    """`[defaults]` used to name recipients for a call that named none.
+
+    It is gone, and the danger now is silence: a file that still carries the
+    table would load fine and do nothing with it, and its author would go on
+    believing their cc was configured. Config that is read but not honoured is
+    worse than config that is refused, so it is refused.
+    """
+
+    def with_defaults(self, tmp_path, table):
+        return write_config(tmp_path, f"{TWO_ACCOUNT_CONFIG}\n{table}")
+
+    def test_it_is_refused_rather_than_ignored(self, tmp_path):
+        with pytest.raises(ConfigError, match=r"\[defaults\]"):
+            load_config(self.with_defaults(tmp_path, "[defaults]\nto = 'lead'\n"))
+
+    def test_the_message_says_what_to_do_instead(self, tmp_path):
+        with pytest.raises(ConfigError) as caught:
+            load_config(self.with_defaults(tmp_path, "[defaults]\ncc = 'lead'\n"))
+        message = str(caught.value)
+        assert "send_mail(to=" in message  # name them on the call
+        assert "delete the table" in message
+
+    def test_an_empty_table_is_refused_too(self, tmp_path):
+        # It still means its author expects defaults to work.
+        with pytest.raises(ConfigError, match=r"\[defaults\]"):
+            load_config(self.with_defaults(tmp_path, "[defaults]\n"))
+
+
 class TestDefaultLocation:
     def test_config_lives_under_the_xdg_directory_not_the_project(self, monkeypatch):
         monkeypatch.delenv("MAILRUN_CONFIG", raising=False)

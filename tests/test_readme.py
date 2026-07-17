@@ -59,12 +59,10 @@ class TestTheConfigExampleWorks:
                 f"{alias!r} resolved to something that is not an address: {resolved}"
             )
 
-    def test_the_default_recipients_resolve(self, readme_config):
-        """`[defaults]` names aliases too, and it fires when nobody passes `to`."""
-        book = readme_config.address_book
-        for field in (readme_config.default_to, readme_config.default_cc):
-            if field:
-                assert resolve_recipients(field, address_book=book)
+    def test_it_does_not_teach_a_defaults_table(self):
+        """The config example is what people paste. A `[defaults]` table in it
+        would not merely be stale -- `load_config` refuses the whole file."""
+        assert "[defaults]" not in config_block()
 
     def test_the_accounts_it_defines_resolve(self, readme_config):
         for name in readme_config.account_by_name:

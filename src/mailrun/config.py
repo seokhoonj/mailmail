@@ -35,23 +35,11 @@ class Config:
         Every configured mailbox.
     address_book
         Alias table, possibly empty.
-    default_to, default_cc, default_bcc
-        Recipients for a message that names none. Addresses or aliases, resolved
-        the same way an explicit argument is.
-
-        These fire on *omission*, which makes them worth thinking about twice: a
-        default cc means every message that does not mention cc carries it,
-        including the one-line note you meant only for yourself. `send_mail`
-        distinguishes "not mentioned" (`None`, take the default) from "nobody"
-        (`()`, send to nobody), so the escape hatch is always one argument away.
     """
 
     default_account: str
     account_by_name: Mapping[str, SmtpAccount]
     address_book: AddressBook
-    default_to: tuple[str, ...] = ()
-    default_cc: tuple[str, ...] = ()
-    default_bcc: tuple[str, ...] = ()
 
     def resolve_account(self, name: str | None = None) -> SmtpAccount:
         """Look up an account by name, or the default when `name` is None.
@@ -129,32 +117,18 @@ def _as_config(document: dict[str, Any], *, path: Path) -> Config:
             f"{path} sets default_account = {default_account!r}, which is not a "
             f"configured account; it has: {known}"
         )
-    defaults = document.get("defaults", {})
-    if not isinstance(defaults, dict):
-        raise ConfigError(f"{path}: [defaults] must be a table")
+    if "defaults" in document:
+        raise ConfigError(
+            f"{path} has a [defaults] table, which mailrun no longer reads. "
+            f"Default recipients fired on omission, so a configured cc rode "
+            f"along on every message that did not mention one -- including the "
+            f"note meant for one person. Name recipients on the call instead "
+            f"(`send_mail(to=..., cc=...)`) and delete the table."
+        )
     return Config(
         default_account = default_account,
         account_by_name = account_by_name,
         address_book    = _as_address_book(document.get("contacts", {}), path=path),
-        default_to      = _as_recipients(defaults, "to", path=path),
-        default_cc      = _as_recipients(defaults, "cc", path=path),
-        default_bcc     = _as_recipients(defaults, "bcc", path=path),
-    )
-
-
-def _as_recipients(
-    defaults: dict[str, Any], key: str, *, path: Path
-) -> tuple[str, ...]:
-    entry = defaults.get(key)
-    if entry is None:
-        return ()
-    if isinstance(entry, str):
-        return (entry,)
-    if isinstance(entry, list) and all(isinstance(one, str) for one in entry):
-        return tuple(entry)
-    raise ConfigError(
-        f"{path}: defaults.{key} must be a string or a list of strings, "
-        f"not {type(entry).__name__}"
     )
 
 

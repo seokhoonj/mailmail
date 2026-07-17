@@ -32,16 +32,9 @@ description: "대화 중에 나온 결과·리포트·파일을 메일로 보낸
 - `attachments` — 파일 경로
 - `account` — 어느 계정으로 보낼지 (기본값은 설정의 `default_account`)
 
-**수신자에는 설정된 기본값이 있고, 이게 함정이다.** `[defaults]`의 `to`/`cc`는 인자를
-**안 넘겼을 때** 발동한다. `None`(안 적음)은 기본값을 쓰고 `()`(아무도 없음)는 기본값을
-끈다.
-
-- 사용자가 수신자를 말하지 않았다면 기본값이 맞을 때가 많다 — 다만 **2단계 확인 화면에서
-  펼쳐 보여주고 승인받는다.** 기본값이라고 조용히 넘어가지 않는다.
-- **사용자가 `to`만 말하고 참조를 말하지 않았다면 기본 참조가 그대로 들어간다.** "나한테
-  보내줘", "테스트로 보내줘" 같은 요청에서 이건 거의 항상 틀렸다 — 상무님이 받게 된다.
-  이런 경우 `cc=()`를 명시하고, 확인 화면에서 참조가 비었음을 보여준다.
-- 사용자가 "참조 빼고", "나만" 이라고 하면 `cc=()`, `bcc=()`를 명시한다.
+**수신자 기본값은 없다.** `to`는 필수이고, 안 적은 참조는 안 들어간다. 봉투에 오르는 주소는
+전부 네가 호출에 적은 것이므로, **수신자를 모르면 지어내지 말고 물어라.** 설정이 뒤에서
+받쳐주지 않는다.
 
 별칭이 뭐가 있는지 모르면 주소록을 먼저 읽는다:
 
@@ -75,7 +68,7 @@ print(resolve_recipients(['team'], address_book=config.address_book))
 
   계정   naver (me@example.com 로 발송)
   받는이 lead@example.com (lead)
-  참조   reviewer@example.com (reviewer)   <- 설정된 기본값
+  참조   reviewer@example.com (reviewer)
   제목   주간 보고
   첨부   report.xlsx (1.2 MB)
 
@@ -87,8 +80,8 @@ print(resolve_recipients(['team'], address_book=config.address_book))
 보낼까요?
 ```
 
-참조가 비어 있으면 `참조   (없음)` 이라고 명시한다. 줄이 아예 없으면 사용자는 기본값이
-들어갔는지 아닌지 알 수 없다.
+참조가 비어 있으면 `참조   (없음)` 이라고 명시한다. 줄이 아예 없으면 사용자는 자기가 안
+말한 참조가 어디선가 붙었는지 아닌지 알 수 없다.
 
 승인 없이 보내지 않는다. 사용자가 "보내줘"라고 이미 말했더라도, 수신자·제목·첨부가
 확정된 형태로 한 번은 보여준다 — 사용자가 승인한 것은 "메일을 보낸다"는 행위이지 아직
@@ -109,7 +102,6 @@ from mailrun import send_mail
 receipt = send_mail(
     account     = "naver",
     to          = ["lead", "reviewer"],   # 별칭은 주소록에서 (1단계에서 읽은 것)
-    cc          = (),                     # 기본 참조를 끈다; 생략하면 들어간다
     subject     = "Weekly report",
     body        = "Hi,\n\nThis week's report is attached.\n\nBest regards,\n",
     attachments = ["/path/to/report.xlsx"],

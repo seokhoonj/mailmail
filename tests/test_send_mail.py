@@ -1,8 +1,13 @@
 """The public one-liner: which recipients a message actually goes to.
 
-Configured defaults fire on omission, which is convenient and sharp-edged in
-equal measure. These tests pin the one rule that keeps it safe: only `None`
-reaches the default, and `()` always means nobody.
+There are no configured default recipients, and the absence is the thing worth
+pinning. Every address on the envelope was named at the call site, so omitting
+cc means no cc -- not a cc from a file the caller was not looking at.
+
+It was not always so. A `[defaults]` table used to fill in whatever the call did
+not mention, which read as a convenience and behaved as a hazard: name only a
+recipient and the configured cc rode along, including on the note meant for one
+person. `to` is required now, so nothing is ever addressed on anyone's behalf.
 """
 
 import pytest
@@ -23,6 +28,7 @@ ADDRESS_BOOK = {
     "lead":     ("lead@example.com",),
     "reviewer": ("reviewer@example.com",),
     "me":       ("me@example.com",),
+    "team":     ("lead", "reviewer"),
 }
 
 
@@ -40,128 +46,89 @@ def headers_of(server):
     return server.header("To"), server.header("Cc")
 
 
-class TestWithoutConfiguredDefaults:
-    def test_named_recipient_is_used(self, fake_smtp):
+class TestTheRecipientsAreTheOnesNamed:
+    def test_a_named_alias_is_resolved(self, fake_smtp):
         send_mail(to="lead", subject="s", body="b", config=a_config())
         assert fake_smtp.sent_messages[0].recipients == ["lead@example.com"]
 
-    def test_message_with_no_recipient_at_all_is_refused(self, fake_smtp):
-        with pytest.raises(ValueError, match="at least one recipient"):
-            send_mail(subject="s", body="b", config=a_config())
-        assert fake_smtp.sent_messages == []
+    def test_a_bare_address_needs_no_address_book(self, fake_smtp):
+        send_mail(to="someone@example.com", subject="s", body="b", config=a_config())
+        assert fake_smtp.sent_messages[0].recipients == ["someone@example.com"]
 
-
-class TestConfiguredDefaults:
-    """to and cc default to the configured recipients when not mentioned."""
-
-    def config_with_defaults(self):
-        return a_config(default_to=("lead",), default_cc=("reviewer",))
-
-    def test_omitting_everything_uses_both_defaults(self, fake_smtp):
-        send_mail(subject="s", body="b", config=self.config_with_defaults())
+    def test_a_group_alias_expands(self, fake_smtp):
+        send_mail(to="team", subject="s", body="b", config=a_config())
         assert fake_smtp.sent_messages[0].recipients == [
             "lead@example.com",
             "reviewer@example.com",
         ]
-        assert headers_of(fake_smtp) == ("lead@example.com", "reviewer@example.com")
 
-    def test_default_recipients_are_resolved_through_the_address_book(
-        self, fake_smtp
-    ):
-        # The default is stored as an alias, not an address; it must expand.
-        send_mail(subject="s", body="b", config=self.config_with_defaults())
-        assert "lead@example.com" in fake_smtp.sent_messages[0].recipients
-
-    def test_naming_to_overrides_the_default_to(self, fake_smtp):
-        send_mail(to="me", subject="s", body="b", config=self.config_with_defaults())
-        to_header, _cc = headers_of(fake_smtp)
-        assert to_header == "me@example.com"
-
-    def test_naming_to_does_not_disturb_the_default_cc(self, fake_smtp):
-        # The sharp edge, stated as a test: a note addressed to yourself still
-        # carries the configured cc unless you say otherwise.
-        send_mail(to="me", subject="s", body="b", config=self.config_with_defaults())
-        _to, cc_header = headers_of(fake_smtp)
-        assert cc_header == "reviewer@example.com"
-
-    def test_empty_cc_means_nobody_and_beats_the_default(self, fake_smtp):
+    def test_addresses_and_aliases_mix(self, fake_smtp):
         send_mail(
-            to="me", cc=(), subject="s", body="b", config=self.config_with_defaults()
+            to=["lead", "outside@example.com"], subject="s", body="b", config=a_config()
         )
-        _to, cc_header = headers_of(fake_smtp)
+        assert fake_smtp.sent_messages[0].recipients == [
+            "lead@example.com",
+            "outside@example.com",
+        ]
+
+
+class TestNothingRidesAlongUnnamed:
+    """The guarantee that replaced the default-recipient machinery."""
+
+    def test_omitting_cc_means_no_cc(self, fake_smtp):
+        send_mail(to="me", subject="s", body="b", config=a_config())
+        to_header, cc_header = headers_of(fake_smtp)
+        assert to_header == "me@example.com"
         assert cc_header is None
         assert fake_smtp.sent_messages[0].recipients == ["me@example.com"]
 
-    def test_empty_to_with_a_named_cc_still_delivers_to_the_cc(self, fake_smtp):
-        send_mail(
-            to=(), cc="lead", subject="s", body="b", config=self.config_with_defaults()
-        )
-        assert fake_smtp.sent_messages[0].recipients == ["lead@example.com"]
+    def test_a_note_to_yourself_reaches_only_yourself(self, fake_smtp):
+        """The exact message the old default cc would have copied to someone
+        else. It is the reason the feature is gone, so it is a test."""
+        send_mail(to="me", subject="reminder", body="b", config=a_config())
+        assert fake_smtp.sent_messages[0].recipients == ["me@example.com"]
 
-    def test_emptying_every_recipient_is_refused(self, fake_smtp):
-        with pytest.raises(ValueError, match="at least one recipient"):
-            send_mail(
-                to=(), cc=(), subject="s", body="b", config=self.config_with_defaults()
-            )
+    def test_omitting_bcc_means_no_bcc(self, fake_smtp):
+        send_mail(to="me", subject="s", body="b", config=a_config())
+        assert fake_smtp.sent_messages[0].recipients == ["me@example.com"]
 
-    # The whole matrix, not a sample: this is the mechanism that decides whether
-    # a note meant for one person quietly carries a cc, so every cell is pinned.
-    # UNSET is the sentinel for "the argument was not passed at all", which is
-    # the case that reaches the default -- distinct from passing None.
-    UNSET = object()
 
-    @pytest.mark.parametrize(
-        ("given_to", "given_cc", "expected_to", "expected_cc"),
-        [
-            # to omitted -> default; cc omitted -> default
-            (UNSET, UNSET, "lead@example.com",     "reviewer@example.com"),
-            # to named -> named; cc omitted -> default (the sharp edge)
-            ("me",  UNSET,  "me@example.com",      "reviewer@example.com"),
-            # to emptied -> nobody; cc omitted -> default carries the message
-            ((),    UNSET,  None,                  "reviewer@example.com"),
-            # to omitted -> default; cc named -> named
-            (UNSET, "me",   "lead@example.com",    "me@example.com"),
-            ("me",  "lead", "me@example.com",      "lead@example.com"),
-            ((),    "lead", None,                  "lead@example.com"),
-            # cc emptied -> nobody, whatever to does
-            (UNSET, (),     "lead@example.com",    None),
-            ("me",  (),     "me@example.com",      None),
-        ],
-    )
-    def test_every_combination_of_to_and_cc(
-        self, fake_smtp, given_to, given_cc, expected_to, expected_cc
-    ):
-        named = {}
-        if given_to is not self.UNSET:
-            named["to"] = given_to
-        if given_cc is not self.UNSET:
-            named["cc"] = given_cc
+class TestCcAndBccWhenNamed:
+    def test_cc_is_delivered_and_shown(self, fake_smtp):
+        send_mail(to="me", cc="lead", subject="s", body="b", config=a_config())
+        assert fake_smtp.sent_messages[0].recipients == [
+            "me@example.com",
+            "lead@example.com",
+        ]
+        assert headers_of(fake_smtp)[1] == "lead@example.com"
 
-        send_mail(subject="s", body="b", config=self.config_with_defaults(), **named)
-
-        assert headers_of(fake_smtp) == (expected_to, expected_cc)
-
-    def test_emptying_both_is_the_one_combination_that_cannot_send(self, fake_smtp):
-        with pytest.raises(InvalidMessageError, match="at least one recipient"):
-            send_mail(
-                to=(), cc=(), subject="s", body="b", config=self.config_with_defaults()
-            )
-        assert fake_smtp.sent_messages == []
-
-    def test_default_bcc_is_delivered_without_a_header(self, fake_smtp):
-        send_mail(
-            subject="s",
-            body="b",
-            config=a_config(default_to=("lead",), default_bcc=("reviewer",)),
-        )
+    def test_bcc_is_delivered_without_a_header(self, fake_smtp):
+        send_mail(to="me", bcc="reviewer", subject="s", body="b", config=a_config())
         assert "reviewer@example.com" in fake_smtp.sent_messages[0].recipients
         assert "reviewer@example.com" not in fake_smtp.last_payload.decode()
 
-    def test_bcc_default_can_be_emptied_too(self, fake_smtp):
-        send_mail(
-            bcc=(),
-            subject="s",
-            body="b",
-            config=a_config(default_to=("lead",), default_bcc=("reviewer",)),
-        )
+    def test_a_cc_only_message_still_delivers(self, fake_smtp):
+        send_mail(to=(), cc="lead", subject="s", body="b", config=a_config())
         assert fake_smtp.sent_messages[0].recipients == ["lead@example.com"]
+
+
+class TestAMessageWithNobodyToSendTo:
+    def test_emptying_every_recipient_is_refused(self, fake_smtp):
+        with pytest.raises(InvalidMessageError, match="at least one recipient"):
+            send_mail(to=(), cc=(), subject="s", body="b", config=a_config())
+        assert fake_smtp.sent_messages == []
+
+    def test_it_is_also_a_value_error(self, fake_smtp):
+        # The promise in the errors module: a bad argument is still a ValueError.
+        with pytest.raises(ValueError, match="at least one recipient"):
+            send_mail(to=(), subject="s", body="b", config=a_config())
+
+    def test_omitting_to_entirely_is_a_type_error(self, fake_smtp):
+        """`to` is required, so the checker catches this before it ever runs.
+
+        Kept as a test anyway because the type hint is the guarantee -- if `to`
+        ever regains a default, this fails and says so.
+        """
+        with pytest.raises(TypeError, match="to"):
+            send_mail(subject="s", body="b", config=a_config())  # type: ignore[call-arg]
+        assert fake_smtp.sent_messages == []
