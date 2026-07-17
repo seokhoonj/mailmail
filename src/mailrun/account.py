@@ -11,7 +11,7 @@ from mailrun.provider import MailProvider
 __all__ = ["SmtpAccount"]
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, kw_only=True)
 class SmtpAccount:
     """A mailbox to send from: the address, and the service that carries it.
 

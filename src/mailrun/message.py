@@ -16,7 +16,7 @@ from mailrun.errors import InvalidMessageError
 __all__ = ["Message"]
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, kw_only=True)
 class Message:
     """Subject, body, recipients, and attachments.
 

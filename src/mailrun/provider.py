@@ -33,7 +33,7 @@ EXECUTABLE_EXTENSIONS = frozenset(
 )
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, kw_only=True)
 class MailProvider:
     """A mail service: where to reach it, and what it will carry.
 
