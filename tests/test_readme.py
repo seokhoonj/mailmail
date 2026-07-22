@@ -91,9 +91,11 @@ class TestTheFactsItStatesAreTheCodesFacts:
     """
 
     def test_the_size_limits_it_advises_match_the_providers(self):
-        """What a reader acts on is "약 25MB", so that is the number pinned.
+        """Both language sections pin the ceiling a reader acts on.
 
-        It used to be the byte count -- 35,882,577 -- which nobody weighs a file
+        The README is bilingual: the English section states "N MB for <Provider>",
+        the Korean "<PROVIDER> 약 NMB", and both have to agree with the code. It
+        used to be the byte count -- 35,882,577 -- which nobody weighs a file
         against. The figure has to survive the same arithmetic the package does:
         the server's ceiling is post-encoding, and base64 adds about 37%.
 
@@ -104,11 +106,17 @@ class TestTheFactsItStatesAreTheCodesFacts:
         for provider in (GMAIL, NAVER):
             usable = provider.max_message_bytes / _ENCODED_EXPANSION
             advised = int(usable / 1024 / 1024)
-            # The README names each service the way the service brands itself,
-            # which is also what `provider.name` holds.
-            assert f"{provider.name.upper()} 약 {advised}MB" in body.upper(), (
-                f"the README does not advise {provider.name}'s real ceiling "
-                f"({advised}MB of original files)"
+            # Each section names the service the way it brands itself, which is
+            # also what `provider.name` holds.
+            english = f"{advised} MB for {provider.name.capitalize()}"
+            korean = f"{provider.name.upper()} 약 {advised}MB"
+            assert english in body, (
+                f"the English README does not advise {provider.name}'s real "
+                f"ceiling ({advised} MB of original files)"
+            )
+            assert korean in body.upper(), (
+                f"the Korean README does not advise {provider.name}'s real "
+                f"ceiling ({advised}MB of original files)"
             )
 
     def test_it_does_not_claim_a_test_count(self):
