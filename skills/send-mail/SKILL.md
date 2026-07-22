@@ -1,26 +1,28 @@
 ---
 name: send-mail
-description: "대화 중에 나온 결과·리포트·파일을 메일로 보낸다. 자체 로직 없이 mailmail 패키지의 send_mail()을 호출하며, 발송 전 반드시 수신자·제목·첨부를 사용자에게 확인받는다. Trigger phrases: 메일 보내줘, 메일로 보내, 메일 발송, 이거 메일로, send mail, email this, 부장님께 보내줘, 상무님께 보내줘."
+description: "Send a result, report, or file from the conversation as email. Holds no logic of its own -- it calls the mailmail package's send_mail(), and always shows the recipients, subject, and attachments for approval before sending. Trigger phrases: send mail, email this, mail this, send this by email, email the report, 메일 보내줘, 메일로 보내, 메일 발송, 이거 메일로, 부장님께 보내줘, 상무님께 보내줘."
 ---
 
-# send-mail — 대화 결과를 메일로 보내기
+# send-mail — send a conversation result as email
 
-메일 발송은 **되돌릴 수 없는 외부 전송**이다. 잘못 보낸 메일은 회수할 수 없고, 잘못된
-수신자에게 간 첨부는 영구히 그쪽에 남는다. 그래서 이 skill의 절반은 발송 자체가 아니라
-발송 전 확인이다.
+Sending mail is an **irreversible external transmission**. A wrong mail cannot be
+recalled, and an attachment sent to the wrong person stays there forever. So half
+of this skill is not the sending — it is the confirmation before it.
 
-## 이 skill이 하지 않는 것
+## What this skill does not do
 
-로직을 갖지 않는다. MIME 조립, 차단 확장자 검사, 크기 계산, 별칭 해석은 **전부 mailmail
-패키지가 한다.** 여기서 그걸 다시 구현하거나, 차단 목록을 여기에 복사해두거나, 확장자를
-직접 검사하지 마라. 그러면 규칙이 두 집에 살게 되고 둘은 반드시 갈라진다. 이 skill은
-`send_mail(...)` 호출 하나를 조립해서 실행할 뿐이다.
+It holds no logic. MIME assembly, the blocked-extension check, size calculation,
+alias resolution — **the mailmail package does all of it.** Do not reimplement any
+of that here, do not copy the blocked list into this file, do not check extensions
+yourself. That would put one fact in two homes, and the two always drift. This
+skill only assembles one `send_mail(...)` call and runs it.
 
-## 패키지를 어디서 찾나
+## Where to find the package
 
-**경로를 하드코딩하지 마라.** 사람마다 저장소를 다른 데 클론한다. 이 skill은 저장소 안에서
-심링크된 것이므로, 저장소는 이 skill 폴더의 **두 단계 위**다. 세션에서 처음 필요할 때 한 번
-찾고, 그 뒤로는 그 값을 재사용한다.
+**Do not hardcode a path.** People clone the repository to different places. This
+skill is symlinked out of the repository, so the repository is **two levels above**
+this skill's folder. Find it once the first time it's needed in a session, then
+reuse that value.
 
 ```sh
 python3 -c "
@@ -31,29 +33,31 @@ print(venv if venv.exists() else 'NOT FOUND')
 "
 ```
 
-`NOT FOUND`가 나오면 지어내지 말고 **사용자에게 저장소 위치를 묻는다.** 심링크가 아니라
-복사해 뒀거나, venv를 아직 안 만든 것이다 (README 1단계).
+If it prints `NOT FOUND`, do not invent a path — **ask the user where the
+repository is.** The skill was copied rather than symlinked, or the venv has not
+been created yet (README step 1).
 
-아래 예시들은 이렇게 찾은 경로를 `$MAILMAIL_PY`로 적는다.
+The examples below write the resolved path as `$MAILMAIL_PY`.
 
-## 절차
+## Procedure
 
-### 1. 무엇을 보낼지 정리한다
+### 1. Work out what to send
 
-사용자 요청에서 다음을 뽑아낸다. 빠진 게 있으면 **추측하지 말고 묻는다.**
+Pull these from the user's request. If anything is missing, **do not guess — ask.**
 
-- `to` / `cc` / `bcc` — 주소 또는 별칭
-- `subject` — 없으면 내용에서 제안하되 사용자에게 확인
-- `body` — 평문 본문
-- `html` — 표·서식이 필요할 때만
-- `attachments` — 파일 경로
-- `account` — 어느 계정으로 보낼지 (기본값은 설정의 `default_account`)
+- `to` / `cc` / `bcc` — addresses or aliases
+- `subject` — if absent, propose one from the content but confirm it with the user
+- `body` — the plain-text body
+- `html` — only when a table or formatting is needed
+- `attachments` — file paths
+- `account` — which account to send as (defaults to the config's `default_account`)
 
-**수신자 기본값은 없다.** `to`는 필수이고, 안 적은 참조는 안 들어간다. 봉투에 오르는 주소는
-전부 네가 호출에 적은 것이므로, **수신자를 모르면 지어내지 말고 물어라.** 설정이 뒤에서
-받쳐주지 않는다.
+**There are no default recipients.** `to` is required, and a cc you don't name is
+not added. Every address on the envelope is one you wrote into the call, so **if
+you don't know the recipient, don't invent one — ask.** The config does not fill it
+in behind you.
 
-별칭이 뭐가 있는지 모르면 주소록을 먼저 읽는다:
+If you don't know what aliases exist, read the address book first:
 
 ```sh
 $MAILMAIL_PY -c "
@@ -65,10 +69,10 @@ print('contacts:', ', '.join(sorted(config.address_book)))
 "
 ```
 
-### 2. 발송 전 확인받는다 — 건너뛰지 않는다
+### 2. Confirm before sending — do not skip this
 
-별칭은 **실제 주소로 펼쳐서** 보여준다. 사용자가 `team`이라고 말했을 때 그게 누구누구로
-나가는지 눈으로 확인할 수 있어야 한다. 펼치는 것도 패키지가 한다:
+Expand aliases to **their real addresses** and show them. When the user says
+`team`, they must be able to see who exactly it goes to. The package expands it too:
 
 ```sh
 $MAILMAIL_PY -c "
@@ -78,39 +82,40 @@ print(resolve_recipients(['team'], address_book=config.address_book))
 "
 ```
 
-그 다음 이 형식으로 사용자에게 보여주고 승인을 받는다:
+Then show the user this and get approval:
 
 ```
-보낼 내용을 확인해 주세요:
+Confirm what will be sent:
 
-  계정   naver (me@example.com 로 발송)
-  받는이 lead@example.com (lead)
-  참조   reviewer@example.com (reviewer)
-  제목   주간 보고
-  첨부   report.xlsx (1.2 MB)
+  Account   naver (sending as me@example.com)
+  To        lead@example.com (lead)
+  Cc        reviewer@example.com (reviewer)
+  Subject   Weekly report
+  Attach    report.xlsx (1.2 MB)
 
-  본문:
+  Body:
   ---
-  첨부 확인 부탁드립니다.
+  Please find the report attached.
   ---
 
-보낼까요?
+Send it?
 ```
 
-참조가 비어 있으면 `참조   (없음)` 이라고 명시한다. 줄이 아예 없으면 사용자는 자기가 안
-말한 참조가 어디선가 붙었는지 아닌지 알 수 없다.
+If there is no cc, write `Cc (none)` explicitly. With the line absent entirely, the
+user cannot tell whether a cc they never mentioned was added somewhere.
 
-승인 없이 보내지 않는다. 사용자가 "보내줘"라고 이미 말했더라도, 수신자·제목·첨부가
-확정된 형태로 한 번은 보여준다 — 사용자가 승인한 것은 "메일을 보낸다"는 행위이지 아직
-이 구체적 내용이 아니다.
+Do not send without approval. Even if the user already said "send it," show the
+recipients, subject, and attachments once in their final form — what the user
+approved was the *act* of sending, not yet this specific content.
 
-**부장님·상무님 등 본인이 아닌 수신자에게는 절대 테스트 메일을 보내지 않는다.** 동작
-확인이 목적이면 본인 주소끼리만 보낸다.
+**Never send a test mail to anyone but yourself — not to a manager, a director, or
+any real recipient.** If the goal is to check that it works, send only between your
+own addresses.
 
-### 3. 보낸다
+### 3. Send
 
-스크립트를 스크래치패드에 쓰고 실행한다. 본문에 줄바꿈·따옴표·한글이 섞이므로 셸
-인자로 넘기지 말고 파일로 쓴다.
+Write the script to the scratchpad and run it. The body mixes newlines, quotes, and
+non-ASCII text, so write it to a file rather than passing it as a shell argument.
 
 ```python
 # <scratchpad>/send.py
@@ -118,7 +123,7 @@ from mailmail import send_mail
 
 receipt = send_mail(
     account     = "naver",
-    to          = ["lead", "reviewer"],   # 별칭은 주소록에서 (1단계에서 읽은 것)
+    to          = ["lead", "reviewer"],   # aliases from the address book (read in step 1)
     subject     = "Weekly report",
     body        = "Hi,\n\nThis week's report is attached.\n\nBest regards,\n",
     attachments = ["/path/to/report.xlsx"],
@@ -133,42 +138,46 @@ if not receipt.is_complete:
 $MAILMAIL_PY <scratchpad>/send.py
 ```
 
-### 4. 결과를 그대로 보고한다
+### 4. Report the result as it is
 
-- `receipt.is_complete`가 참이면 발송 완료. 수신자와 message-id를 보고한다.
-- 거짓이면 **일부만 갔다는 뜻이다.** 거부된 주소와 사유를 반드시 사용자에게 알린다.
-  성공으로 뭉뚱그리지 않는다.
+- If `receipt.is_complete` is true, it was sent. Report the recipients and the
+  message-id.
+- If it is false, **only some of it went.** Always tell the user which addresses
+  were refused and why. Do not round it up to success.
 
-## 예외가 났을 때
+## When an exception is raised
 
-패키지 예외는 이미 사용자가 읽을 수 있는 문장이다. 그대로 전달하고, 아래 조치만 덧붙인다.
+The package's exceptions are already sentences a user can read. Relay them as they
+are, and add only the action below.
 
-**규칙: `str(err)` 를 그대로 전달한다.** 각 예외는 무엇이 잘못됐고 어떻게 고치는지를 이미
-문장으로 들고 있다. 여기에 그 내용을 요약하거나 복사해두지 마라 — 한 사실이 두 집에 살면
-반드시 갈라지고, 실제로 갈라진 적이 있다. 아래 표는 예외별로 **덧붙일 행동**만 적는다.
+**Rule: relay `str(err)` verbatim.** Each exception already carries, in a sentence,
+what went wrong and how to fix it. Do not summarise or copy that content here — one
+fact in two homes always drifts, and it has drifted before. The table below records
+only the **action to add** per exception.
 
-| 예외 | 덧붙일 행동 |
+| Exception | Action to add |
 |---|---|
-| `MissingPasswordError` | **비밀번호를 대화에 붙여넣게 하지 마라.** 본인 터미널에서 `getpass`로 입력하는 명령을 안내한다(README 참조). 한 번 넣으면 다시 물어볼 일이 없다. |
-| `InsecureCredentialsError` | 없음 — 예외에 `chmod 600` 명령이 그대로 들어 있다. |
-| `BlockedAttachmentError` | 링크 공유를 제안한다. |
-| `EncryptedArchiveError` | 압축 비밀번호를 풀거나 링크로 보낼지 묻는다. |
-| `UnscannableArchiveError` | 압축이 너무 깊거나 커서 끝까지 들여다볼 수 없다. 압축을 한 겹 풀거나 링크로 보낼지 묻는다. (`EncryptedArchiveError`가 이것의 한 갈래이므로, 둘 다 잡으려면 이 이름으로 잡는다.) |
-| `MessageTooLargeError` | 첨부를 줄일지 묻는다. |
-| `UnknownContactError` | 예외가 아는 별칭을 나열하므로, 그중에서 고르게 하거나 주소를 직접 받는다. |
-| `ContactCycleError` | 없음 — 예외가 순환 경로를 그려준다. |
-| `InvalidMessageError` | 수신자나 제목이 비었다. 사용자에게 받아서 다시 조립한다. |
-| `RecipientRefusedError` | 주소 오타를 먼저 의심한다. |
-| `AuthenticationFailedError` | 없음 — 예외에 해당 provider의 요구사항이 전부 들어 있다. |
-| `UnknownAccountError` / `UnknownProviderError` | 설정에 없는 계정·provider다. 아래 "첫 설정"으로 간다. |
+| `MissingPasswordError` | **Do not have the user paste the password into the chat.** Point them to the `getpass` command they run in their own terminal (see the README). Once stored, it is not asked again. |
+| `InsecureCredentialsError` | None — the exception carries the `chmod 600` command itself. |
+| `BlockedAttachmentError` | Suggest sharing it as a link. |
+| `EncryptedArchiveError` | Ask whether to remove the archive password or send a link. |
+| `UnscannableArchiveError` | The archive is too deep or too large to scan to the bottom. Ask whether to unpack one layer or send a link. (`EncryptedArchiveError` is one kind of this, so catch this name to catch both.) |
+| `MessageTooLargeError` | Ask whether to shrink the attachments. |
+| `UnknownContactError` | The exception lists the aliases it knows, so let the user pick one or give an address directly. |
+| `ContactCycleError` | None — the exception draws the loop. |
+| `InvalidMessageError` | A recipient or the subject is empty. Get it from the user and reassemble. |
+| `RecipientRefusedError` | Suspect a typo in the address first. |
+| `AuthenticationFailedError` | None — the exception carries that provider's full requirements. |
+| `UnknownAccountError` / `UnknownProviderError` | An account or provider not in the config. Go to "First-time setup" below. |
 
-## 첫 설정
+## First-time setup
 
-`ConfigError`가 나면 설정 파일이 없는 것이다. 형식은 저장소의 `README.md` 2단계에 있다.
+A `ConfigError` means the config file is missing. Its format is in step 2 of the
+repository's `README.md`.
 
-**경로를 적어두지 마라.** 패키지가 `MAILMAIL_CONFIG`·`MAILMAIL_CREDENTIALS`·`XDG_CONFIG_HOME`를
-보고 정하므로, 여기 적은 경로는 그걸 설정한 사용자에게 틀린 파일을 고치라고 안내하게 된다.
-패키지에 물어라:
+**Do not write a path down.** The package decides it from `MAILMAIL_CONFIG`,
+`MAILMAIL_CREDENTIALS`, and `XDG_CONFIG_HOME`, so a path written here would send a
+user who set any of those to fix the wrong file. Ask the package:
 
 ```sh
 $MAILMAIL_PY -c "
@@ -178,8 +187,9 @@ print('credentials:', default_credentials_path())
 "
 ```
 
-**설정 파일과 비밀번호는 저장소 안에 만들지 않는다** — 저장소는 커밋되고, 클라우드 드라이브
-아래 놓여 있을 수도 있다. 위가 찍어주는 자리에 만든다. 둘 다 저장소 밖이다.
+**Do not create the config file or the password inside the repository** — the
+repository is committed, and may sit under a synced drive. Create them where the
+command above prints. Both are outside the repository.
 
-**비밀번호를 대화나 스크립트에 평문으로 쓰지 마라.** 대화 기록에 남는다. 사용자에게
-`getpass`를 쓰는 명령을 안내하고 본인 터미널에서 실행하게 한다.
+**Never write a password in plain text into the chat or a script.** It stays in the
+transcript. Point the user to a `getpass` command they run in their own terminal.
