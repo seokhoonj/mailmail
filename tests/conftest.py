@@ -64,6 +64,8 @@ class FakeSmtp:
         self.starttls_raises = None
         self.login_raises = None
         self.quit_raises = None
+        self.sendmail_raises = None
+        self.sendmail_raises_on = None
         self.refusals = refusals or {}
 
     def ehlo(self):
@@ -88,12 +90,31 @@ class FakeSmtp:
             raise self.login_raises
 
     def sendmail(self, from_addr, to_addrs, msg):
+        # A transport failure (the server drops the connection mid-batch) raises
+        # before anything is recorded, and can be aimed at one recipient so a
+        # batch test can fail on a chosen row and check the rest never went.
+        if self.sendmail_raises is not None and (
+            self.sendmail_raises_on is None or self.sendmail_raises_on in to_addrs
+        ):
+            raise self.sendmail_raises
+        # Real smtplib reports a refusal only for a recipient it was asked to
+        # deliver to, and raises SMTPRecipientsRefused only when the refusals
+        # cover them all -- during RCPT, before DATA, so a totally refused message
+        # never reaches the wire. Returning the whole refusals map for every send,
+        # or recording a totally refused message as sent, is invisible to a
+        # single-message test and wrong for a batch.
+        requested = set(to_addrs)
+        refused = {
+            address: reply
+            for address, reply in self.refusals.items()
+            if address in requested
+        }
+        if refused and set(refused) >= requested:
+            raise smtplib.SMTPRecipientsRefused(refused)
         self.sent_messages.append(
             SentMessage(payload=msg, sender=from_addr, recipients=list(to_addrs))
         )
-        if self.refusals and set(self.refusals) >= set(to_addrs):
-            raise smtplib.SMTPRecipientsRefused(self.refusals)
-        return dict(self.refusals)
+        return refused
 
     def quit(self):
         self.quit_count += 1

@@ -238,6 +238,43 @@ if not receipt.is_complete:  # 일부 주소가 거부됐을 때
   쓰면 사람마다 다른 메일을 읽게 된다.
 - **한글은 그냥 쓰면 된다.** 제목이든 본문이든 따로 처리할 게 없다.
 
+## 여러 통 한 번에 (메일 머지)
+
+같은 안내를 사람마다 다른 값·다른 첨부로 보낼 때는 `send_bulk`을 쓴다. 한 명에 `Mail`
+하나씩 담으면, 전부 **연결 하나로** 나간다 — 서른 명이면 로그인이 서른 번이 아니라 한
+번이다.
+
+```python
+from mailmail import Mail, send_bulk
+
+receipts = send_bulk([
+    Mail(to="cheolsu@example.com", subject="6월 실적",
+         body="철수님, 첨부 확인 부탁드립니다.", attachments=["cheolsu.xlsx"]),
+    Mail(to="younghee@example.com", subject="6월 실적",
+         body="영희님, 첨부 확인 부탁드립니다.", attachments=["younghee.xlsx"]),
+])
+
+for receipt in receipts:
+    if not receipt.is_complete:  # 이 통에서 거부된 주소가 있으면
+        print(receipt.reason_by_refused_recipient)
+```
+
+`Mail`은 `send_mail`과 같은 어휘다 — `to`·`cc`·`bcc`에 주소나 주소록 이름을 섞어 쓰고,
+`attachments`는 경로다. 개인화(이름·수치·첨부)는 통마다 `Mail`을 다르게 만들면 된다.
+
+몇 가지 알아둘 것:
+
+- **결과는 통 순서 그대로 목록으로 온다.** `zip(mails, receipts)`로 누가 어떻게 됐는지
+  짝지을 수 있다. 한 통이 수신자 전원 거부돼도 그 통은 `accepted`가 빈 receipt로 남고
+  **나머지는 그대로 나간다** — 30통 중 3통이 막히면 27통은 간다.
+- **대부분의 나쁜 행은 아무것도 보내기 전에 막는다.** 어느 통에 주소록에 없는 이름, 빈
+  제목, 차단된 첨부, 또는 이미 한도를 넘는 첨부가 있으면 **연결을 열기 전에** 예외가 나고
+  한 통도 안 나간다.
+- **되돌릴 수 없는 두 경우:** (1) 어떤 통이 조립하고 나서야 크기 한도를 넘거나(사전 검사는
+  첨부만 재고 완성된 MIME은 못 잰다), (2) 보내는 도중 연결이 끊기면(네트워크 장애). 둘 다
+  앞 통은 이미 나간 뒤라 되돌릴 수 없고, 그때까지 모은 receipt도 잃는다. 서버가
+  **수신자별로** 거부한 것은 예외가 아니라 receipt에 담긴다.
+
 ## 못 보내는 파일
 
 메일 서비스가 거부할 첨부는 **보내기 전에** 예외로 알려준다. 서버까지 갔다가 몇 분 뒤

@@ -1,19 +1,25 @@
-"""The mail being sent, and the MIME form it goes out as.
+"""The mail being sent: from a loose request, to MIME on the wire.
 
-A `Message` is content only -- it does not know which account will carry it, so
-the sender address arrives at `to_mime()` from the outside.
+A `Mail` is the loose request a caller hands in -- addresses or aliases, files by
+path, nothing validated yet. `compose_message` resolves it against an address
+book into a `Message`, the strict content core, and `Message.to_mime()` turns
+that into the bytes the server receives. A `Message` is content only -- it does
+not know which account will carry it, so the sender address arrives at
+`to_mime()` from the outside.
 """
 
 from collections.abc import Iterable
 from dataclasses import dataclass
 from email.message import EmailMessage
 from email.utils import formatdate, make_msgid
+from pathlib import Path
 from typing import Self
 
 from mailmail.attachment import Attachment
+from mailmail.contacts import AddressBook, resolve_recipients
 from mailmail.errors import InvalidMessageError
 
-__all__ = ["Message"]
+__all__ = ["Mail", "Message", "compose_message"]
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -160,6 +166,86 @@ class Message:
                 filename = attachment.filename,
             )
         return mime
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class Mail:
+    """One message to send, in the loose vocabulary `send_mail` accepts.
+
+    The per-item input to `send_bulk`, and the shape `send_mail`'s own arguments
+    take on their way in: recipients may be addresses or address-book aliases (a
+    lone string is one recipient), and attachments are paths. `compose_message`
+    resolves those into the addresses and `Attachment`s a `Message` holds -- what
+    separates a `Mail` from a `Message` is resolution, not strictness. A `Mail`
+    is the request you hand in; a `Message` is what the package composes it into.
+
+    The iterable fields are normalised to tuples on construction, so a `Mail` is
+    a stable, re-readable, hashable record like any other frozen dataclass. What
+    it does not do is validate: an unknown alias, a blank subject, or a message
+    that resolves to no recipient is caught when the `Mail` becomes a `Message`,
+    the one place that check lives.
+
+    Attributes
+    ----------
+    subject, body
+        The plain-text parts, sent as written.
+    to, cc, bcc
+        Addresses, address-book aliases, or a mix. A lone string is one
+        recipient. `bcc` is delivered without appearing in any header.
+    html
+        Optional HTML alternative to `body`.
+    attachments
+        Paths to attach.
+    """
+
+    subject: str
+    body: str
+    to: str | Iterable[str]
+    cc: str | Iterable[str] = ()
+    bcc: str | Iterable[str] = ()
+    html: str | None = None
+    attachments: Iterable[Path | str] = ()
+
+    def __post_init__(self) -> None:
+        # A frozen dataclass promises a stable, hashable value; a field left as a
+        # bare list or a generator breaks both -- a generator reads empty the
+        # second time, and hash() of a list raises. Normalise to tuples the way
+        # Message does, keeping a lone recipient string as the one-recipient
+        # shorthand rather than a tuple of its characters.
+        for field_name in ("to", "cc", "bcc"):
+            value = getattr(self, field_name)
+            if not isinstance(value, str):
+                object.__setattr__(self, field_name, tuple(value))
+        object.__setattr__(self, "attachments", tuple(self.attachments))
+
+
+def compose_message(mail: Mail, *, address_book: AddressBook) -> Message:
+    """Resolve a loose `Mail` into the `Message` that will be sent.
+
+    Expands address-book aliases and turns attachment paths into `Attachment`s,
+    then hands the resolved parts to `Message.compose`. This is the single place
+    the loose request becomes the strict content core, so `send_mail` and
+    `send_bulk` compose a message identically.
+
+    Raises
+    ------
+    UnknownContactError, ContactCycleError
+        A recipient is neither an address nor a resolvable alias.
+    AttachmentError
+        An attachment path is missing or is not a regular file.
+    InvalidMessageError
+        The result has no recipient, a blank subject, or an address with a line
+        break.
+    """
+    return Message.compose(
+        subject     = mail.subject,
+        body        = mail.body,
+        html        = mail.html,
+        to          = resolve_recipients(mail.to, address_book=address_book),
+        cc          = resolve_recipients(mail.cc, address_book=address_book),
+        bcc         = resolve_recipients(mail.bcc, address_book=address_book),
+        attachments = tuple(Attachment.from_path(path) for path in mail.attachments),
+    )
 
 
 def _refuse_bare_string(field_name: str, value: object) -> None:

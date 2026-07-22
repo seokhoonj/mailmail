@@ -19,7 +19,7 @@ Sending as a particular mailbox is `account="gmail"`; reusing one connection for
 a batch is `Mailer`.
 """
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from pathlib import Path
 
 from mailmail.account import SmtpAccount
@@ -54,7 +54,7 @@ from mailmail.errors import (
     UnscannableArchiveError,
 )
 from mailmail.mailer import Mailer, SendReceipt
-from mailmail.message import Message
+from mailmail.message import Mail, Message, compose_message
 from mailmail.provider import GMAIL, NAVER, MailProvider, SmtpSecurity
 
 __all__ = [
@@ -74,6 +74,7 @@ __all__ = [
     "EncryptedArchiveError",
     "InsecureCredentialsError",
     "InvalidMessageError",
+    "Mail",
     "MailProvider",
     "Mailer",
     "MailmailError",
@@ -88,12 +89,14 @@ __all__ = [
     "UnknownContactError",
     "UnknownProviderError",
     "UnscannableArchiveError",
+    "compose_message",
     "default_config_path",
     "default_credentials_path",
     "delete_password",
     "load_config",
     "resolve_password",
     "resolve_recipients",
+    "send_bulk",
     "send_mail",
     "store_password",
 ]
@@ -176,14 +179,84 @@ def send_mail(
     """
     config = config if config is not None else load_config()
     smtp_account = config.resolve_account(account)
-    book = config.address_book
-    message = Message.compose(
+    mail = Mail(
         subject     = subject,
         body        = body,
         html        = html,
-        to          = resolve_recipients(to, address_book=book),
-        cc          = resolve_recipients(cc, address_book=book),
-        bcc         = resolve_recipients(bcc, address_book=book),
-        attachments = tuple(Attachment.from_path(path) for path in attachments),
+        to          = to,
+        cc          = cc,
+        bcc         = bcc,
+        attachments = attachments,
     )
+    message = compose_message(mail, address_book=config.address_book)
     return Mailer(smtp_account).send(message)
+
+
+def send_bulk(
+    mails: Sequence[Mail],
+    *,
+    account: str | None = None,
+    config: Config | None = None,
+) -> list[SendReceipt]:
+    """Send many messages over one connection, and report each one's result.
+
+    A mail merge in one call: one `Mail` per recipient, personalised however the
+    caller built it, all sent as the same account over a single login. The two
+    things a plain `with Mailer(...)` loop does not give you are here -- every
+    mail is checked before the connection opens, and one refused recipient does
+    not sink the rest of the batch.
+
+    Parameters
+    ----------
+    mails
+        One `Mail` per message, held as a sequence so the returned receipts can
+        be paired back with it by position. Recipients may be addresses or
+        aliases and attachments are paths, exactly as `send_mail` takes them.
+    account
+        Which configured mailbox to send as. Defaults to `default_account`.
+    config
+        Loaded configuration. Read from disk when omitted.
+
+    Returns
+    -------
+    list[SendReceipt]
+        One receipt per mail, in the order given, so `zip(mails, receipts)` pairs
+        each with its outcome. A message the server refused for every recipient
+        is a receipt with empty `accepted`, not a missing entry -- check
+        `receipt.is_complete` per row.
+
+    Raises
+    ------
+    These are raised before the connection opens, so nothing is sent -- one bad
+    row stops the whole batch:
+
+    ConfigError, UnknownAccountError
+        The configuration is missing or does not define the account.
+    UnknownContactError, ContactCycleError, InvalidMessageError
+        A row's recipient is not resolvable, or a row has no recipient or a
+        blank subject.
+    BlockedAttachmentError, UnscannableArchiveError, EncryptedArchiveError
+        A row's attachment would be rejected by the provider.
+    MessageTooLargeError
+        A row's attachments already exceed the size limit.
+
+    These can land mid-batch, after earlier messages have gone out -- the
+    exception propagates, the receipts collected so far are lost, and what was
+    already sent cannot be unsent:
+
+    MessageTooLargeError
+        A row crosses the size limit only once fully assembled; the up-front
+        screen weighs attachments alone, not the finished MIME.
+    smtplib.SMTPException, OSError
+        The session or the network dropped partway through the batch.
+
+    What the server merely refuses per recipient stays in the receipts and never
+    raises.
+    """
+    config = config if config is not None else load_config()
+    smtp_account = config.resolve_account(account)
+    address_book = config.address_book
+    # Compose every message first, so an unresolvable alias or blank subject in
+    # any row fails here, before send_many opens a connection.
+    messages = [compose_message(mail, address_book=address_book) for mail in mails]
+    return Mailer(smtp_account).send_many(messages)

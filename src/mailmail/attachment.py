@@ -34,6 +34,7 @@ __all__ = [
     "check_attachments",
     "check_message_size",
     "estimate_encoded_bytes",
+    "screen_attachments",
 ]
 
 DEFAULT_MIME_TYPE = "application/octet-stream"
@@ -216,6 +217,31 @@ def check_message_size(encoded_bytes: int, *, limit_bytes: int) -> None:
         f"most {_as_mib(limit_bytes)}; attachments grow by about 37% on the way "
         f"out, so the raw files must total roughly "
         f"{_as_mib(int(limit_bytes / _ENCODED_EXPANSION))} or less"
+    )
+
+
+def screen_attachments(
+    attachments: Iterable[Attachment], *, provider: MailProvider
+) -> None:
+    """Raise if `provider` would reject these attachments, before connecting.
+
+    The cheap gate a send runs before it opens a socket, wrapped as one call so
+    `send_bulk` can run it over every message up front and fail at the call site
+    rather than partway through a batch. It is the blocked-type and archive scan
+    plus the size floor from `stat` -- it reads no attachment in full, so the
+    exact wire-size check still waits until the message is assembled.
+
+    Raises
+    ------
+    BlockedAttachmentError, UnscannableArchiveError, EncryptedArchiveError
+        The provider blocks a file type, or an archive cannot be scanned.
+    MessageTooLargeError
+        The attachments alone already exceed the server's limit.
+    """
+    attachments = tuple(attachments)
+    check_attachments(attachments, provider=provider)
+    check_message_size(
+        estimate_encoded_bytes(attachments), limit_bytes=provider.max_message_bytes
     )
 
 

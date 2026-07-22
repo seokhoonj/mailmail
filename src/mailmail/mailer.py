@@ -8,7 +8,7 @@ what makes a batch cheap; used bare, each `send` opens and closes its own.
 import io
 import smtplib
 import ssl
-from collections.abc import Iterator, Mapping
+from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from email.generator import BytesGenerator
@@ -17,11 +17,7 @@ from types import MappingProxyType, TracebackType
 from typing import Self
 
 from mailmail.account import SmtpAccount
-from mailmail.attachment import (
-    check_attachments,
-    check_message_size,
-    estimate_encoded_bytes,
-)
+from mailmail.attachment import check_message_size, screen_attachments
 from mailmail.credentials import resolve_password
 from mailmail.errors import AuthenticationFailedError, RecipientRefusedError
 from mailmail.message import Message
@@ -152,12 +148,50 @@ class Mailer:
             `MailmailError`: these are the standard library's own, and wrapping
             them would say less than they already do.
         """
+        screen_attachments(message.attachments, provider=self._account.provider)
+        receipt = self._transmit(message)
+        if not receipt.accepted:
+            refused = ", ".join(sorted(receipt.reason_by_refused_recipient))
+            raise RecipientRefusedError(
+                f"the server refused every recipient ({refused}); nothing was sent"
+            )
+        return receipt
+
+    def send_many(self, messages: Sequence[Message]) -> list[SendReceipt]:
+        """Send messages over one connection; one receipt each, refusals reported.
+
+        The batch capability `send_bulk` is built on, kept here because `Mailer`
+        owns the connection. Every message is screened up front, so a bad one
+        fails before the socket opens and nothing is sent; then one session
+        carries them all, and a server that refuses every recipient of a message
+        is a receipt with empty `accepted` rather than a raise, so it does not
+        sink the rest.
+
+        Used bare it opens one connection for the batch and closes it; used
+        inside a `with Mailer(...)` block it reuses the open one. It raises what
+        `send` raises except `RecipientRefusedError`, which it keeps in the
+        receipt.
+        """
+        if not messages:
+            return []
+        for message in messages:
+            screen_attachments(message.attachments, provider=self._account.provider)
+        if self._smtp is not None:
+            return [self._transmit(message) for message in messages]
+        with self:
+            return [self._transmit(message) for message in messages]
+
+    def _transmit(self, message: Message) -> SendReceipt:
+        """Assemble a screened message and put it on the wire; report refusals.
+
+        The shared core of `send` and `send_many`, called once the attachments
+        have been screened. It still weighs the assembled payload -- the exact
+        size is known only here, after `to_mime` -- and reports a total refusal
+        in the receipt (empty `accepted`) rather than raising, so a batch can
+        carry that outcome. `send` is what turns it back into
+        `RecipientRefusedError` for a single send.
+        """
         provider = self._account.provider
-        check_attachments(message.attachments, provider=provider)
-        check_message_size(
-            estimate_encoded_bytes(message.attachments),
-            limit_bytes = provider.max_message_bytes,
-        )
         mime = message.to_mime(sender=self._account.username)
         payload = _as_wire_bytes(mime)
         check_message_size(len(payload), limit_bytes=provider.max_message_bytes)
@@ -314,14 +348,18 @@ def _send_over(
     Takes the already-flattened bytes, and the recipients explicitly rather than
     off the headers -- which is what delivers bcc addresses without naming them
     in the message.
+
+    A refusal of every recipient is reported the same way as a refusal of some.
+    smtplib returns the refusal map when at least one recipient was accepted, and
+    raises `SMTPRecipientsRefused` carrying the same map when none was; both
+    become one map here. Nobody-accepted is then a receipt with empty `accepted`,
+    which `Mailer.send` turns back into `RecipientRefusedError` while `send_bulk`
+    keeps as a receipt, so one dead address does not lose the rest of a batch.
     """
     try:
         refused = smtp.sendmail(sender, list(recipients), payload)
     except smtplib.SMTPRecipientsRefused as err:
-        refused_all = ", ".join(sorted(err.recipients))
-        raise RecipientRefusedError(
-            f"the server refused every recipient ({refused_all}); nothing was sent"
-        ) from err
+        refused = err.recipients
     return {address: _as_reason(reply) for address, reply in refused.items()}
 
 
