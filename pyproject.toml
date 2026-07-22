@@ -10,6 +10,20 @@ readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
 authors = [{ name = "Seokhoon Joo", email = "seokhoonj@gmail.com" }]
+keywords = ["email", "smtp", "gmail", "naver", "mail-merge", "attachments"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Communications :: Email",
+    "Typing :: Typed",
+]
 # No runtime dependencies on purpose: smtplib, email, tomllib, and json carry the
 # whole package, and a mail sender that never breaks on someone else's release is
 # worth more than any convenience a third party would add.
@@ -21,6 +35,11 @@ dev = [
     "pytest>=8.0",
     "ruff>=0.6",
 ]
+
+[project.urls]
+Homepage = "https://github.com/seokhoonj/mailmail"
+Repository = "https://github.com/seokhoonj/mailmail"
+Issues = "https://github.com/seokhoonj/mailmail/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/mailmail"]

@@ -28,9 +28,18 @@ def readme_text() -> str:
 
 
 def config_block() -> str:
-    """The TOML the reader is told to write into `~/.config/mailmail/config.toml`."""
+    """The TOML the reader is told to write into `~/.config/mailmail/config.toml`.
+
+    The README is bilingual, so the config example appears once per language. They
+    must be identical -- a config that drifts between the English and Korean copies
+    is the paste-and-fail this whole module guards against -- so assert that and
+    return the one.
+    """
     blocks: list[str] = re.findall(r"```toml\n(.*?)```", readme_text(), re.DOTALL)
-    assert len(blocks) == 1, f"expected one toml block, found {len(blocks)}"
+    assert blocks, "expected a toml config block in the README"
+    assert all(block == blocks[0] for block in blocks), (
+        "the README's toml config blocks differ between languages"
+    )
     return blocks[0]
 
 
