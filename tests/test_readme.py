@@ -16,9 +16,9 @@ from pathlib import Path
 
 import pytest
 
-from mailrun import load_config, resolve_recipients
-from mailrun.attachment import _ENCODED_EXPANSION
-from mailrun.provider import GMAIL, NAVER
+from mailmail import load_config, resolve_recipients
+from mailmail.attachment import _ENCODED_EXPANSION
+from mailmail.provider import GMAIL, NAVER
 
 README = Path(__file__).parent.parent / "README.md"
 
@@ -28,7 +28,7 @@ def readme_text() -> str:
 
 
 def config_block() -> str:
-    """The TOML the reader is told to write into `~/.config/mailrun/config.toml`."""
+    """The TOML the reader is told to write into `~/.config/mailmail/config.toml`."""
     blocks: list[str] = re.findall(r"```toml\n(.*?)```", readme_text(), re.DOTALL)
     assert len(blocks) == 1, f"expected one toml block, found {len(blocks)}"
     return blocks[0]
@@ -39,7 +39,7 @@ def readme_config(tmp_path, monkeypatch):
     """A loaded config, built from the README's own example."""
     path = tmp_path / "config.toml"
     path.write_text(config_block(), encoding="utf-8")
-    monkeypatch.setenv("MAILRUN_CONFIG", str(path))
+    monkeypatch.setenv("MAILMAIL_CONFIG", str(path))
     return load_config()
 
 
@@ -109,9 +109,9 @@ class TestTheFactsItStatesAreTheCodesFacts:
     def test_every_public_name_it_shows_exists(self):
         """A README that names a function the package does not export is a bug
         report from the future, filed by whoever pastes it."""
-        import mailrun
+        import mailmail
 
-        shown = set(re.findall(r"from mailrun import ([^\n]+)", readme_text()))
+        shown = set(re.findall(r"from mailmail import ([^\n]+)", readme_text()))
         names = {name.strip() for line in shown for name in line.split(",")}
-        missing = [name for name in names if not hasattr(mailrun, name)]
+        missing = [name for name in names if not hasattr(mailmail, name)]
         assert not missing, f"the README imports names that do not exist: {missing}"

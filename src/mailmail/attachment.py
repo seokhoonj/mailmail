@@ -20,14 +20,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import IO, Self
 
-from mailrun.errors import (
+from mailmail.errors import (
     AttachmentError,
     BlockedAttachmentError,
     EncryptedArchiveError,
     MessageTooLargeError,
     UnscannableArchiveError,
 )
-from mailrun.provider import MailProvider
+from mailmail.provider import MailProvider
 
 __all__ = [
     "Attachment",

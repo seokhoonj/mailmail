@@ -2,9 +2,9 @@
 
 import pytest
 
-from mailrun.attachment import Attachment
-from mailrun.errors import InvalidMessageError, MailrunError
-from mailrun.message import Message
+from mailmail.attachment import Attachment
+from mailmail.errors import InvalidMessageError, MailmailError
+from mailmail.message import Message
 
 SENDER = "sender@example.com"
 
@@ -51,26 +51,26 @@ class TestRecipientNormalization:
 
 
 class TestOneExceptGuardsTheWholeSend:
-    """errors.py promises every error descends from MailrunError. It must.
+    """errors.py promises every error descends from MailmailError. It must.
 
     These two used to escape as a bare ValueError -- and the skill *instructs*
     the caller to pass `cc=()`, so the shipped consumer walked at the one path
     the promise did not cover.
     """
 
-    def test_a_message_with_no_recipient_raises_a_mailrun_error(self):
-        with pytest.raises(MailrunError):
+    def test_a_message_with_no_recipient_raises_a_mailmail_error(self):
+        with pytest.raises(MailmailError):
             make_message(to=())
 
-    def test_a_message_with_no_subject_raises_a_mailrun_error(self):
-        with pytest.raises(MailrunError):
+    def test_a_message_with_no_subject_raises_a_mailmail_error(self):
+        with pytest.raises(MailmailError):
             make_message(subject="")
 
     def test_it_is_still_a_value_error_for_anyone_who_caught_that(self):
         # Both, deliberately: a bad argument has always been a ValueError, and
         # nobody who reasonably wrote `except ValueError` should be broken.
         assert issubclass(InvalidMessageError, ValueError)
-        assert issubclass(InvalidMessageError, MailrunError)
+        assert issubclass(InvalidMessageError, MailmailError)
 
 
 class TestAddressesWithLineBreaks:

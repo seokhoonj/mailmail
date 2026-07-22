@@ -15,17 +15,17 @@ tree, so deleting it fails here in a second rather than in CI in a minute.
 
 from pathlib import Path
 
-import mailrun
+import mailmail
 
 
 def test_the_py_typed_marker_sits_beside_the_code():
     """PEP 561's marker, found the way a checker finds it: next to `__init__`.
 
-    Located through `mailrun.__file__` rather than a path relative to this test,
+    Located through `mailmail.__file__` rather than a path relative to this test,
     so it follows the package to wherever it was installed instead of asserting
     something about the repo layout.
     """
-    marker = Path(mailrun.__file__).parent / "py.typed"
+    marker = Path(mailmail.__file__).parent / "py.typed"
     assert marker.exists(), (
         "py.typed is missing, so every type hint in this package is invisible to "
         "anyone who installs it -- their checker will not read a single one"
@@ -35,5 +35,5 @@ def test_the_py_typed_marker_sits_beside_the_code():
 def test_the_marker_is_empty():
     """PEP 561 gives the file no contents to have. An empty marker is the whole
     protocol; anything written in it would be a note to nobody."""
-    marker = Path(mailrun.__file__).parent / "py.typed"
+    marker = Path(mailmail.__file__).parent / "py.typed"
     assert marker.read_text() == ""

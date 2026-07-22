@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from mailrun.config import default_config_path, load_config
-from mailrun.errors import ConfigError, UnknownAccountError, UnknownProviderError
+from mailmail.config import default_config_path, load_config
+from mailmail.errors import ConfigError, UnknownAccountError, UnknownProviderError
 
 TWO_ACCOUNT_CONFIG = """
 default_account = "naver"
@@ -204,17 +204,18 @@ class TestARetiredDefaultsTable:
 
 class TestDefaultLocation:
     def test_config_lives_under_the_xdg_directory_not_the_project(self, monkeypatch):
-        monkeypatch.delenv("MAILRUN_CONFIG", raising=False)
+        monkeypatch.delenv("MAILMAIL_CONFIG", raising=False)
         monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
         monkeypatch.setattr(Path, "home", lambda: Path("/home/tester"))
-        assert default_config_path() == Path("/home/tester/.config/mailrun/config.toml")
+        expected = Path("/home/tester/.config/mailmail/config.toml")
+        assert default_config_path() == expected
 
     def test_xdg_config_home_is_honoured(self, monkeypatch):
-        monkeypatch.delenv("MAILRUN_CONFIG", raising=False)
+        monkeypatch.delenv("MAILMAIL_CONFIG", raising=False)
         monkeypatch.setenv("XDG_CONFIG_HOME", "/elsewhere/config")
-        assert str(default_config_path()) == "/elsewhere/config/mailrun/config.toml"
+        assert str(default_config_path()) == "/elsewhere/config/mailmail/config.toml"
 
     def test_explicit_env_override_wins(self, monkeypatch):
-        monkeypatch.setenv("MAILRUN_CONFIG", "/tmp/other.toml")
+        monkeypatch.setenv("MAILMAIL_CONFIG", "/tmp/other.toml")
         monkeypatch.setenv("XDG_CONFIG_HOME", "/elsewhere/config")
         assert str(default_config_path()) == "/tmp/other.toml"

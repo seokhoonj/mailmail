@@ -1,6 +1,6 @@
 """Sending, against a fake SMTP server -- nothing leaves the machine.
 
-The real client is replaced at `mailrun.mailer.smtplib` (see conftest), so these
+The real client is replaced at `mailmail.mailer.smtplib` (see conftest), so these
 tests exercise the whole path from `Message` down to the exact bytes the server
 would be handed, deterministically and offline.
 """
@@ -11,18 +11,18 @@ from pathlib import Path
 
 import pytest
 
-from mailrun.account import SmtpAccount
-from mailrun.attachment import Attachment, estimate_encoded_bytes
-from mailrun.credentials import store_password
-from mailrun.errors import (
+from mailmail.account import SmtpAccount
+from mailmail.attachment import Attachment, estimate_encoded_bytes
+from mailmail.credentials import store_password
+from mailmail.errors import (
     AuthenticationFailedError,
     BlockedAttachmentError,
     MessageTooLargeError,
     RecipientRefusedError,
 )
-from mailrun.mailer import Mailer, _as_wire_bytes
-from mailrun.message import Message
-from mailrun.provider import GMAIL, MailProvider
+from mailmail.mailer import Mailer, _as_wire_bytes
+from mailmail.message import Message
+from mailmail.provider import GMAIL, MailProvider
 
 ACCOUNT = SmtpAccount(name="gmail", username="sender@example.com", provider=GMAIL)
 
@@ -85,7 +85,7 @@ class TestConnection:
         assert fake_smtp.logins == [("sender@example.com", "app-pw")]
 
     def test_password_env_var_beats_the_stored_one(self, fake_smtp, monkeypatch):
-        monkeypatch.setenv("MAILRUN_PASSWORD", "from-env")
+        monkeypatch.setenv("MAILMAIL_PASSWORD", "from-env")
         Mailer(ACCOUNT).send(make_message())
         assert fake_smtp.logins == [("sender@example.com", "from-env")]
 
@@ -465,7 +465,7 @@ class TestAProviderThatWantsTlsFromTheFirstByte:
             )
             return fake_smtp
 
-        monkeypatch.setattr("mailrun.mailer.smtplib.SMTP_SSL", connect)
+        monkeypatch.setattr("mailmail.mailer.smtplib.SMTP_SSL", connect)
         store_password(SSL_ACCOUNT, "app-pw")
         return fake_smtp
 

@@ -1,6 +1,6 @@
 ---
 name: send-mail
-description: "대화 중에 나온 결과·리포트·파일을 메일로 보낸다. 자체 로직 없이 mailrun 패키지의 send_mail()을 호출하며, 발송 전 반드시 수신자·제목·첨부를 사용자에게 확인받는다. Trigger phrases: 메일 보내줘, 메일로 보내, 메일 발송, 이거 메일로, send mail, email this, 부장님께 보내줘, 상무님께 보내줘."
+description: "대화 중에 나온 결과·리포트·파일을 메일로 보낸다. 자체 로직 없이 mailmail 패키지의 send_mail()을 호출하며, 발송 전 반드시 수신자·제목·첨부를 사용자에게 확인받는다. Trigger phrases: 메일 보내줘, 메일로 보내, 메일 발송, 이거 메일로, send mail, email this, 부장님께 보내줘, 상무님께 보내줘."
 ---
 
 # send-mail — 대화 결과를 메일로 보내기
@@ -11,7 +11,7 @@ description: "대화 중에 나온 결과·리포트·파일을 메일로 보낸
 
 ## 이 skill이 하지 않는 것
 
-로직을 갖지 않는다. MIME 조립, 차단 확장자 검사, 크기 계산, 별칭 해석은 **전부 mailrun
+로직을 갖지 않는다. MIME 조립, 차단 확장자 검사, 크기 계산, 별칭 해석은 **전부 mailmail
 패키지가 한다.** 여기서 그걸 다시 구현하거나, 차단 목록을 여기에 복사해두거나, 확장자를
 직접 검사하지 마라. 그러면 규칙이 두 집에 살게 되고 둘은 반드시 갈라진다. 이 skill은
 `send_mail(...)` 호출 하나를 조립해서 실행할 뿐이다.
@@ -34,7 +34,7 @@ print(venv if venv.exists() else 'NOT FOUND')
 `NOT FOUND`가 나오면 지어내지 말고 **사용자에게 저장소 위치를 묻는다.** 심링크가 아니라
 복사해 뒀거나, venv를 아직 안 만든 것이다 (README 1단계).
 
-아래 예시들은 이렇게 찾은 경로를 `$MAILRUN_PY`로 적는다.
+아래 예시들은 이렇게 찾은 경로를 `$MAILMAIL_PY`로 적는다.
 
 ## 절차
 
@@ -56,8 +56,8 @@ print(venv if venv.exists() else 'NOT FOUND')
 별칭이 뭐가 있는지 모르면 주소록을 먼저 읽는다:
 
 ```sh
-$MAILRUN_PY -c "
-from mailrun import load_config
+$MAILMAIL_PY -c "
+from mailmail import load_config
 config = load_config()
 print('accounts:', ', '.join(sorted(config.account_by_name)))
 print('default:', config.default_account)
@@ -71,8 +71,8 @@ print('contacts:', ', '.join(sorted(config.address_book)))
 나가는지 눈으로 확인할 수 있어야 한다. 펼치는 것도 패키지가 한다:
 
 ```sh
-$MAILRUN_PY -c "
-from mailrun import load_config, resolve_recipients
+$MAILMAIL_PY -c "
+from mailmail import load_config, resolve_recipients
 config = load_config()
 print(resolve_recipients(['team'], address_book=config.address_book))
 "
@@ -114,7 +114,7 @@ print(resolve_recipients(['team'], address_book=config.address_book))
 
 ```python
 # <scratchpad>/send.py
-from mailrun import send_mail
+from mailmail import send_mail
 
 receipt = send_mail(
     account     = "naver",
@@ -130,7 +130,7 @@ if not receipt.is_complete:
 ```
 
 ```sh
-$MAILRUN_PY <scratchpad>/send.py
+$MAILMAIL_PY <scratchpad>/send.py
 ```
 
 ### 4. 결과를 그대로 보고한다
@@ -166,13 +166,13 @@ $MAILRUN_PY <scratchpad>/send.py
 
 `ConfigError`가 나면 설정 파일이 없는 것이다. 형식은 저장소의 `README.md` 2단계에 있다.
 
-**경로를 적어두지 마라.** 패키지가 `MAILRUN_CONFIG`·`MAILRUN_CREDENTIALS`·`XDG_CONFIG_HOME`를
+**경로를 적어두지 마라.** 패키지가 `MAILMAIL_CONFIG`·`MAILMAIL_CREDENTIALS`·`XDG_CONFIG_HOME`를
 보고 정하므로, 여기 적은 경로는 그걸 설정한 사용자에게 틀린 파일을 고치라고 안내하게 된다.
 패키지에 물어라:
 
 ```sh
-$MAILRUN_PY -c "
-from mailrun import default_config_path, default_credentials_path
+$MAILMAIL_PY -c "
+from mailmail import default_config_path, default_credentials_path
 print('config:     ', default_config_path())
 print('credentials:', default_credentials_path())
 "

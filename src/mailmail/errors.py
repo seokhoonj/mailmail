@@ -1,6 +1,6 @@
-"""Exceptions raised by mailrun.
+"""Exceptions raised by mailmail.
 
-Every error mailrun *defines* descends from `MailrunError`, so one `except`
+Every error mailmail *defines* descends from `MailmailError`, so one `except`
 catches everything this package judges: a blocked attachment, an unknown alias,
 a message the server would refuse, a password that is missing or badly kept.
 
@@ -18,7 +18,7 @@ and inventing a wrapper for them would say less than they already do:
 the exception's own docstring says why. A caller who must catch every way a send
 can fail writes:
 
-    except (MailrunError, smtplib.SMTPException, OSError)
+    except (MailmailError, smtplib.SMTPException, OSError)
 """
 
 __all__ = [
@@ -32,7 +32,7 @@ __all__ = [
     "EncryptedArchiveError",
     "InsecureCredentialsError",
     "InvalidMessageError",
-    "MailrunError",
+    "MailmailError",
     "MessageTooLargeError",
     "MissingPasswordError",
     "RecipientRefusedError",
@@ -43,11 +43,11 @@ __all__ = [
 ]
 
 
-class MailrunError(Exception):
-    """Base class for every error mailrun raises."""
+class MailmailError(Exception):
+    """Base class for every error mailmail raises."""
 
 
-class ConfigError(MailrunError):
+class ConfigError(MailmailError):
     """The configuration file is missing, malformed, or incomplete."""
 
 
@@ -56,10 +56,10 @@ class UnknownAccountError(ConfigError):
 
 
 class UnknownProviderError(ConfigError):
-    """An account names a mail provider mailrun does not know how to reach."""
+    """An account names a mail provider mailmail does not know how to reach."""
 
 
-class ContactError(MailrunError):
+class ContactError(MailmailError):
     """Base class for address-book entries that cannot be resolved."""
 
 
@@ -71,17 +71,17 @@ class ContactCycleError(ContactError):
     """Address-book aliases refer to each other in a loop."""
 
 
-class InvalidMessageError(MailrunError, ValueError):
+class InvalidMessageError(MailmailError, ValueError):
     """The message is not sendable as given: no recipient, or no subject.
 
     Also a `ValueError`, which is what a bad argument has always been in Python
     and what callers already catch. Inheriting both keeps the promise at the top
-    of this file true -- that one `except MailrunError` guards a whole send --
+    of this file true -- that one `except MailmailError` guards a whole send --
     without breaking anyone who reasonably wrote `except ValueError`.
     """
 
 
-class AttachmentError(MailrunError):
+class AttachmentError(MailmailError):
     """A file cannot be attached, or the provider would refuse it.
 
     Raised directly when the path is missing, is not a regular file, or the MIME
@@ -111,11 +111,11 @@ class EncryptedArchiveError(UnscannableArchiveError):
     """
 
 
-class MessageTooLargeError(MailrunError):
+class MessageTooLargeError(MailmailError):
     """The encoded message exceeds what the provider's SMTP server accepts."""
 
 
-class CredentialsError(MailrunError):
+class CredentialsError(MailmailError):
     """Base class for problems with the stored passwords."""
 
 
@@ -136,5 +136,5 @@ class AuthenticationFailedError(CredentialsError):
     """
 
 
-class RecipientRefusedError(MailrunError):
+class RecipientRefusedError(MailmailError):
     """The server refused every recipient, so nothing was delivered."""

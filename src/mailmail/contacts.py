@@ -8,7 +8,7 @@ their addresses -- one place to fix when somebody's address changes.
 from collections.abc import Iterable, Mapping, Sequence
 from typing import TypeAlias
 
-from mailrun.errors import ContactCycleError, UnknownContactError
+from mailmail.errors import ContactCycleError, UnknownContactError
 
 __all__ = ["AddressBook", "resolve_recipients"]
 

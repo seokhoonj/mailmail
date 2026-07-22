@@ -1,6 +1,6 @@
 """Send mail from Python through Gmail or Naver SMTP.
 
-    from mailrun import send_mail
+    from mailmail import send_mail
 
     send_mail(
         to          = "lead",
@@ -22,18 +22,18 @@ a batch is `Mailer`.
 from collections.abc import Iterable
 from pathlib import Path
 
-from mailrun.account import SmtpAccount
-from mailrun.attachment import Attachment
-from mailrun.config import Config, default_config_path, load_config
-from mailrun.contacts import AddressBook, resolve_recipients
-from mailrun.credentials import (
+from mailmail.account import SmtpAccount
+from mailmail.attachment import Attachment
+from mailmail.config import Config, default_config_path, load_config
+from mailmail.contacts import AddressBook, resolve_recipients
+from mailmail.credentials import (
     PASSWORD_ENV_VAR,
     default_credentials_path,
     delete_password,
     resolve_password,
     store_password,
 )
-from mailrun.errors import (
+from mailmail.errors import (
     AttachmentError,
     AuthenticationFailedError,
     BlockedAttachmentError,
@@ -44,7 +44,7 @@ from mailrun.errors import (
     EncryptedArchiveError,
     InsecureCredentialsError,
     InvalidMessageError,
-    MailrunError,
+    MailmailError,
     MessageTooLargeError,
     MissingPasswordError,
     RecipientRefusedError,
@@ -53,9 +53,9 @@ from mailrun.errors import (
     UnknownProviderError,
     UnscannableArchiveError,
 )
-from mailrun.mailer import Mailer, SendReceipt
-from mailrun.message import Message
-from mailrun.provider import GMAIL, NAVER, MailProvider, SmtpSecurity
+from mailmail.mailer import Mailer, SendReceipt
+from mailmail.message import Message
+from mailmail.provider import GMAIL, NAVER, MailProvider, SmtpSecurity
 
 __all__ = [
     "GMAIL",
@@ -76,7 +76,7 @@ __all__ = [
     "InvalidMessageError",
     "MailProvider",
     "Mailer",
-    "MailrunError",
+    "MailmailError",
     "Message",
     "MessageTooLargeError",
     "MissingPasswordError",
@@ -141,10 +141,10 @@ def send_mail(
 
     Raises
     ------
-    Everything below descends from `MailrunError` except the last entry, which is
+    Everything below descends from `MailmailError` except the last entry, which is
     the standard library's own and is passed through untranslated. A caller who
     must catch every way a send can fail writes
-    `except (MailrunError, smtplib.SMTPException, OSError)`.
+    `except (MailmailError, smtplib.SMTPException, OSError)`.
 
     ConfigError, UnknownAccountError
         The configuration is missing or does not define the account.
@@ -171,7 +171,7 @@ def send_mail(
         The session or the network failed -- the server hung up, DNS did not
         answer, the connection timed out, or the server's certificate is not
         trusted (`ssl.SSLCertVerificationError`, an `OSError`). Not a
-        `MailrunError`: these are the standard library's own, and wrapping them
+        `MailmailError`: these are the standard library's own, and wrapping them
         would say less than they already do.
     """
     config = config if config is not None else load_config()

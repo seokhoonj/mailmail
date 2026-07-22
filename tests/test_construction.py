@@ -13,8 +13,8 @@ buys is pinned here rather than trusted.
 
 import pytest
 
-from mailrun import MailProvider, Message, SmtpAccount
-from mailrun.provider import NAVER
+from mailmail import MailProvider, Message, SmtpAccount
+from mailmail.provider import NAVER
 
 
 class TestTheseCannotBeMisordered:

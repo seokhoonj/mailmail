@@ -7,24 +7,24 @@ from pathlib import Path
 
 import pytest
 
-from mailrun.attachment import (
+from mailmail.attachment import (
     _MAX_ARCHIVE_DEPTH,
     Attachment,
     _has_tar_magic,
     check_attachments,
     check_message_size,
 )
-from mailrun.errors import (
+from mailmail.errors import (
     AttachmentError,
     BlockedAttachmentError,
     EncryptedArchiveError,
-    MailrunError,
+    MailmailError,
     MessageTooLargeError,
     UnscannableArchiveError,
 )
-from mailrun.mailer import _as_wire_bytes
-from mailrun.message import Message
-from mailrun.provider import GMAIL, NAVER
+from mailmail.mailer import _as_wire_bytes
+from mailmail.message import Message
+from mailmail.provider import GMAIL, NAVER
 
 
 def write_file(directory, name, content=b"payload"):
@@ -506,7 +506,7 @@ class TestAnArchiveThatCannotBeReadToTheEnd:
         whole[at + 30] ^= 0xFF  # breaks the outer archive's CRC for inner.zip
         outer.write_bytes(bytes(whole))
 
-        with pytest.raises(MailrunError) as caught:
+        with pytest.raises(MailmailError) as caught:
             check_attachments([Attachment.from_path(outer)], provider=GMAIL)
         assert not isinstance(caught.value, type(None))
 
@@ -528,7 +528,7 @@ class TestAnArchiveThatCannotBeReadToTheEnd:
         half.write_bytes(full.read_bytes()[:100_000])
         assert b"setup.exe" in half.read_bytes(), "the name is right there in the file"
 
-        with pytest.raises(MailrunError):
+        with pytest.raises(MailmailError):
             check_attachments([Attachment.from_path(half)], provider=GMAIL)
 
     def test_a_file_that_is_not_an_archive_at_all_is_still_judged_on_its_suffix(
@@ -583,7 +583,7 @@ class TestANestedArchiveTooBigToLookInside:
     """
 
     def test_a_member_past_the_scan_budget_is_refused(self, tmp_path, monkeypatch):
-        monkeypatch.setattr("mailrun.attachment._MAX_NESTED_ARCHIVE_BYTES", 64)
+        monkeypatch.setattr("mailmail.attachment._MAX_NESTED_ARCHIVE_BYTES", 64)
         inner = write_zip(tmp_path, "inner.zip", ["notes.txt"])
         inner.write_bytes(inner.read_bytes() + b"0" * 128)
         outer = write_zip_of_files(tmp_path, "outer.zip", [inner])

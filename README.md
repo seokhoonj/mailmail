@@ -1,10 +1,10 @@
-# mailrun
+# mailmail
 
 NAVER·Gmail 계정으로 메일을 보내는 파이썬 패키지. 첨부파일, HTML 본문, 참조를 지원하고,
 자주 보내는 사람은 이름으로 저장해두고 부를 수 있다.
 
 ```python
-from mailrun import send_mail
+from mailmail import send_mail
 
 send_mail(
     to          = "someone@example.com",
@@ -31,8 +31,8 @@ Windows·macOS·Linux에서 동작한다. 설치되는 것은 이 패키지뿐�
 ## 1. 설치
 
 ```sh
-git clone https://github.com/seokhoonj/mailrun.git
-cd mailrun
+git clone https://github.com/seokhoonj/mailmail.git
+cd mailmail
 python -m venv .venv
 ```
 
@@ -54,17 +54,17 @@ pip install -e .
 잘 됐는지 확인:
 
 ```sh
-python -c "import mailrun; print(mailrun.__version__)"
+python -c "import mailmail; print(mailmail.__version__)"
 ```
 
 ## 2. 계정 설정
 
-홈 폴더 아래 `.config/mailrun/` 에 `config.toml` 파일을 만든다. 전체 경로는 이렇다.
+홈 폴더 아래 `.config/mailmail/` 에 `config.toml` 파일을 만든다. 전체 경로는 이렇다.
 
 | | 경로 |
 |---|---|
-| macOS · Linux | `~/.config/mailrun/config.toml` |
-| Windows | `C:\Users\<사용자이름>\.config\mailrun\config.toml` |
+| macOS · Linux | `~/.config/mailmail/config.toml` |
+| Windows | `C:\Users\<사용자이름>\.config\mailmail\config.toml` |
 
 폴더가 없으면 만든다. 파일 내용은 자기 주소로 바꿔서:
 
@@ -110,7 +110,7 @@ team = ["me", "lead"]
 1. **네이버ID → 보안설정 → 2단계 인증**을 켠다. 이걸 안 켜면 다음 단계 메뉴가 아예 없다.
 2. 같은 화면에서 **애플리케이션 비밀번호 → 생성하기**.
    - **종류선택은 그냥 이름표다.** 아웃룩·아이폰·지메일 중 뭘 고르든 나오는 비밀번호는 같다.
-     직접 입력에 mailrun이라고 적어두면 나중에 알아보기 좋다.
+     직접 입력에 mailmail이라고 적어두면 나중에 알아보기 좋다.
    - 12자리 대문자+숫자가 나온다. **그 화면을 벗어나면 다시 못 본다.** 복사해둔다.
 3. **메일 → 환경설정 → POP3/IMAP 설정**에서 **SMTP 사용함**을 확인한다. 이미 켜져 있어도
    **사용 안 함 → 저장 → 사용함 → 저장** 으로 한 번 껐다 켠다. 2025년 6월 정책 변경이 이때
@@ -130,7 +130,7 @@ team = ["me", "lead"]
 ```sh
 python -c "
 from getpass import getpass
-from mailrun import load_config, store_password
+from mailmail import load_config, store_password
 
 account = load_config().resolve_account('naver')                  # Gmail이면 'gmail'
 password = getpass(f'{account.username} app password: ').strip()
@@ -155,7 +155,7 @@ print('  saved')
 ```sh
 python -c "
 import smtplib
-from mailrun import load_config, resolve_password
+from mailmail import load_config, resolve_password
 
 for name in ('naver',):  # Gmail도 저장했으면 ('naver', 'gmail')
     account = load_config().resolve_account(name)
@@ -180,7 +180,7 @@ for name in ('naver',):  # Gmail도 저장했으면 ('naver', 'gmail')
 ## 4. 메일 보내기
 
 ```python
-from mailrun import send_mail
+from mailmail import send_mail
 
 send_mail(
     to      = "someone@example.com",

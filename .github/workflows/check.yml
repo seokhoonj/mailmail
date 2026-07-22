@@ -53,23 +53,23 @@ jobs:
       - name: Confirm the package still has no runtime dependencies
         # The zero-dependency claim is in the README and the pyproject comment; a
         # claim nothing checks is a claim that quietly stops being true. Installed
-        # into a bare environment, mailrun must import with nothing else present.
+        # into a bare environment, mailmail must import with nothing else present.
         run: |
           uv venv /tmp/bare --python ${{ matrix.python-version }}
           uv pip install --python /tmp/bare/bin/python .
           /tmp/bare/bin/python -c "
           import importlib.metadata as md
-          requires = md.requires('mailrun') or []
+          requires = md.requires('mailmail') or []
           runtime = [r for r in requires if 'extra ==' not in r]
           assert not runtime, f'runtime dependencies appeared: {runtime}'
-          import mailrun
-          print('mailrun', mailrun.__version__, 'imports with no third-party packages')
+          import mailmail
+          print('mailmail', mailmail.__version__, 'imports with no third-party packages')
           "
 
       - name: Confirm a user's type checker can see the hints
         # Every hint in this package is invisible to a user unless py.typed ships
         # alongside it (PEP 561), and the source cannot answer whether it did:
-        # src/mailrun/py.typed can sit there in git while the built wheel omits it.
+        # src/mailmail/py.typed can sit there in git while the built wheel omits it.
         # So ask it the way a user does -- install the built package into a clean
         # environment and run their checker over their code. It shipped without the
         # marker once, which made `to` being required a promise that held only
@@ -78,7 +78,7 @@ jobs:
           uv venv /tmp/typed --python ${{ matrix.python-version }}
           uv pip install --python /tmp/typed/bin/python . mypy
           cat > /tmp/user_code.py <<'PY'
-          from mailrun import Message, send_mail
+          from mailmail import Message, send_mail
 
           Message(subject="s", body="b", to="lead@example.com")  # 16 recipients
           send_mail(subject="s", body="b")                       # no recipient

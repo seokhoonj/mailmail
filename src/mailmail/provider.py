@@ -1,4 +1,4 @@
-"""The mail services mailrun can send through, and what each one accepts.
+"""The mail services mailmail can send through, and what each one accepts.
 
 A provider bundles the two facts that differ between mail services: how to reach
 the SMTP server, and what that service refuses to carry. Adding a service means
@@ -8,7 +8,7 @@ adding one `MailProvider` here -- not another send function.
 from dataclasses import dataclass
 from typing import Literal, TypeAlias
 
-from mailrun.errors import UnknownProviderError
+from mailmail.errors import UnknownProviderError
 
 __all__ = ["GMAIL", "NAVER", "MailProvider", "SmtpSecurity", "resolve_provider"]
 
@@ -113,12 +113,12 @@ def resolve_provider(name: str) -> MailProvider:
     Raises
     ------
     UnknownProviderError
-        If `name` is not a provider mailrun knows.
+        If `name` is not a provider mailmail knows.
     """
     try:
         return PROVIDER_BY_NAME[name]
     except KeyError as err:
         known = ", ".join(sorted(PROVIDER_BY_NAME))
         raise UnknownProviderError(
-            f"unknown mail provider {name!r}; mailrun knows: {known}"
+            f"unknown mail provider {name!r}; mailmail knows: {known}"
         ) from err

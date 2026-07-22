@@ -2,8 +2,8 @@
 
 import pytest
 
-from mailrun.contacts import resolve_recipients
-from mailrun.errors import ContactCycleError, UnknownContactError
+from mailmail.contacts import resolve_recipients
+from mailmail.errors import ContactCycleError, UnknownContactError
 
 TEAM_ADDRESS_BOOK = {
     "lead":     ("lead@example.com",),

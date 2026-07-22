@@ -88,14 +88,14 @@ class TestTheSkillStaysAThinWrapper:
 
     def test_it_does_not_restate_the_blocked_extension_list(self):
         # The list lives in provider.py. A copy here is a copy that goes stale.
-        from mailrun.provider import EXECUTABLE_EXTENSIONS
+        from mailmail.provider import EXECUTABLE_EXTENSIONS
 
         body = SKILL.read_text(encoding="utf-8")
         named = [ext for ext in EXECUTABLE_EXTENSIONS if f"`{ext}`" in body]
         assert not named, f"the skill names blocked extensions itself: {named}"
 
     def test_it_does_not_restate_the_size_limits(self):
-        from mailrun.provider import GMAIL, NAVER
+        from mailmail.provider import GMAIL, NAVER
 
         body = SKILL.read_text(encoding="utf-8")
         for provider in (GMAIL, NAVER):
@@ -110,8 +110,8 @@ class TestTheSkillStaysAThinWrapper:
 class TestItDoesNotAssumeItIsOnMyMachine:
     """The skill ships to whoever clones the repo, wherever they put it.
 
-    It used to say the package lives at `~/Dropbox/mailrun` and to run
-    `~/Dropbox/mailrun/.venv/bin/python`. That path is true on exactly one
+    It used to say the package lives at `~/Dropbox/mailmail` and to run
+    `~/Dropbox/mailmail/.venv/bin/python`. That path is true on exactly one
     computer. The README tells everyone else to `git clone` and land wherever
     they are, so for them the skill pointed at nothing -- and it explained the
     config location by talking about Dropbox syncing, which is my arrangement,
@@ -135,17 +135,17 @@ class TestItDoesNotAssumeItIsOnMyMachine:
         )
 
     def test_it_writes_down_no_path_the_package_computes(self):
-        """`~/.config/mailrun/...` is the package's answer, not a constant.
+        """`~/.config/mailmail/...` is the package's answer, not a constant.
 
-        `default_config_path()` reads MAILRUN_CONFIG and XDG_CONFIG_HOME, so a
+        `default_config_path()` reads MAILMAIL_CONFIG and XDG_CONFIG_HOME, so a
         literal path here sends anyone who set either to go fix the wrong file.
         This is the third time a path was written down in this skill and the
-        second time it was wrong -- the first was `~/Dropbox/mailrun`, true on
+        second time it was wrong -- the first was `~/Dropbox/mailmail`, true on
         one computer.
         """
         body = SKILL.read_text(encoding="utf-8")
-        for computed in ("~/.config/mailrun/config.toml",
-                         "~/.config/mailrun/credentials.json"):
+        for computed in ("~/.config/mailmail/config.toml",
+                         "~/.config/mailmail/credentials.json"):
             assert computed not in body, (
                 f"the skill states {computed}, which the package works out from "
                 f"the environment -- ask it with default_config_path() instead"
@@ -180,10 +180,10 @@ class TestItDoesNotAssumeItIsOnMyMachine:
         and listing it would only tell the reader to catch a category it will
         never see.
         """
-        from mailrun import errors
+        from mailmail import errors
 
         abstract = {
-            "MailrunError",
+            "MailmailError",
             "ConfigError",
             "ContactError",
             "AttachmentError",

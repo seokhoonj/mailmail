@@ -12,9 +12,9 @@ person. `to` is required now, so nothing is ever addressed on anyone's behalf.
 
 import pytest
 
-from mailrun import Config, InvalidMessageError, SmtpAccount, send_mail
-from mailrun.credentials import store_password
-from mailrun.provider import NAVER
+from mailmail import Config, InvalidMessageError, SmtpAccount, send_mail
+from mailmail.credentials import store_password
+from mailmail.provider import NAVER
 
 ACCOUNT = SmtpAccount(name="naver", username="me@example.com", provider=NAVER)
 

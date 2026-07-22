@@ -6,7 +6,7 @@ its password lives is a separate concern -- see `credentials`.
 
 from dataclasses import dataclass
 
-from mailrun.provider import MailProvider
+from mailmail.provider import MailProvider
 
 __all__ = ["SmtpAccount"]
 

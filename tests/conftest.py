@@ -6,7 +6,7 @@ with the real client's contract lets the suite pass while the send is broken,
 which is the failure mode a fake exists to avoid. One fake, one place to keep
 honest.
 
-It mirrors `smtplib.SMTP` only where mailrun touches it -- `ehlo`, `starttls`,
+It mirrors `smtplib.SMTP` only where mailmail touches it -- `ehlo`, `starttls`,
 `login`, `sendmail`, `quit`, `close`, and `esmtp_features`. Each raise is
 injectable, because the paths worth testing here are the ones where something
 goes wrong partway through a handshake.
@@ -134,7 +134,7 @@ def fake_smtp(monkeypatch, tmp_path):
         server.connections.append({"host": host, "port": port, "timeout": timeout})
         return server
 
-    monkeypatch.setattr("mailrun.mailer.smtplib.SMTP", fake_smtp_class)
-    monkeypatch.setenv("MAILRUN_CREDENTIALS", str(tmp_path / "credentials.json"))
-    monkeypatch.delenv("MAILRUN_PASSWORD", raising=False)
+    monkeypatch.setattr("mailmail.mailer.smtplib.SMTP", fake_smtp_class)
+    monkeypatch.setenv("MAILMAIL_CREDENTIALS", str(tmp_path / "credentials.json"))
+    monkeypatch.delenv("MAILMAIL_PASSWORD", raising=False)
     return server

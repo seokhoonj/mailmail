@@ -29,8 +29,8 @@ import re
 import stat
 from pathlib import Path
 
-from mailrun.account import SmtpAccount
-from mailrun.errors import (
+from mailmail.account import SmtpAccount
+from mailmail.errors import (
     CredentialsError,
     InsecureCredentialsError,
     MissingPasswordError,
@@ -46,8 +46,8 @@ __all__ = [
     "store_password",
 ]
 
-PASSWORD_ENV_VAR = "MAILRUN_PASSWORD"
-CREDENTIALS_PATH_ENV_VAR = "MAILRUN_CREDENTIALS"
+PASSWORD_ENV_VAR = "MAILMAIL_PASSWORD"
+CREDENTIALS_PATH_ENV_VAR = "MAILMAIL_CREDENTIALS"
 
 # Owner read/write, nothing for anyone else -- what ssh demands of a private key,
 # for the same reason: a secret the group can read is not a secret.
@@ -55,17 +55,17 @@ CREDENTIALS_FILE_MODE = 0o600
 
 
 def default_credentials_path() -> Path:
-    """Where mailrun looks for stored passwords.
+    """Where mailmail looks for stored passwords.
 
-    `MAILRUN_CREDENTIALS` wins; otherwise it sits beside the configuration, at
-    `~/.config/mailrun/credentials.json`.
+    `MAILMAIL_CREDENTIALS` wins; otherwise it sits beside the configuration, at
+    `~/.config/mailmail/credentials.json`.
     """
     override = os.environ.get(CREDENTIALS_PATH_ENV_VAR)
     if override:
         return Path(override).expanduser()
     xdg_home = os.environ.get("XDG_CONFIG_HOME")
     config_home = Path(xdg_home).expanduser() if xdg_home else Path.home() / ".config"
-    return config_home / "mailrun" / "credentials.json"
+    return config_home / "mailmail" / "credentials.json"
 
 
 def resolve_password(account: SmtpAccount, *, path: Path | None = None) -> str:
@@ -74,7 +74,7 @@ def resolve_password(account: SmtpAccount, *, path: Path | None = None) -> str:
     Checks the environment first, so a one-off or a container can supply the
     password without a file, then the credentials file.
 
-    `MAILRUN_PASSWORD_<ACCOUNT>` is read before the bare `MAILRUN_PASSWORD` --
+    `MAILMAIL_PASSWORD_<ACCOUNT>` is read before the bare `MAILMAIL_PASSWORD` --
     with two accounts configured, the bare name cannot say which mailbox it is
     for, and answering with it anyway sends one service's app password to the
     other's server. See `_load_password_from_env`.
@@ -165,7 +165,7 @@ def delete_password(account: SmtpAccount, *, path: Path | None = None) -> None:
 def _load_password_from_env(account: SmtpAccount) -> str | None:
     """The password the environment offers for this account, if any.
 
-    `MAILRUN_PASSWORD_NAVER` beats a bare `MAILRUN_PASSWORD`, because the bare
+    `MAILMAIL_PASSWORD_NAVER` beats a bare `MAILMAIL_PASSWORD`, because the bare
     name is only unambiguous while one account exists. `resolve_password` used
     to read it and return before looking at its `account` argument at all, so
     with gmail and naver both configured -- which the config file positively
@@ -183,7 +183,7 @@ def _load_password_from_env(account: SmtpAccount) -> str | None:
     Anything a shell will not take in a variable name folds to `_`, so the name
     that is read is the name that can be exported. TOML allows `-` and `.` in a
     bare key, and `[accounts.me-naver]` is an ordinary thing to write -- but
-    `export MAILRUN_PASSWORD_ME-NAVER=...` is "not a valid identifier", so
+    `export MAILMAIL_PASSWORD_ME-NAVER=...` is "not a valid identifier", so
     reading that name literally could never match. It would fall to the bare name
     and hand one service's password to another's server: the exact disclosure
     above, back again, with this function claiming to prevent it.

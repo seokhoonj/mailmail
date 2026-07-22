@@ -18,7 +18,7 @@ import sys
 import urllib.error
 import urllib.request
 
-from mailrun.provider import EXECUTABLE_EXTENSIONS
+from mailmail.provider import EXECUTABLE_EXTENSIONS
 
 SOURCE = "https://support.google.com/mail/answer/6590"
 
@@ -46,7 +46,7 @@ def published_extensions(html: str) -> set[str]:
 
 def main() -> int:
     try:
-        request = urllib.request.Request(SOURCE, headers={"User-Agent": "mailrun"})
+        request = urllib.request.Request(SOURCE, headers={"User-Agent": "mailmail"})
         with urllib.request.urlopen(request, timeout=30) as response:
             html = response.read().decode("utf-8", errors="replace")
     except (urllib.error.URLError, TimeoutError) as err:
@@ -76,7 +76,7 @@ def main() -> int:
     if not missing and not extra:
         print("\nidentical -- the snapshot is still current")
         return 0
-    print("\nUpdate EXECUTABLE_EXTENSIONS in src/mailrun/provider.py if the page")
+    print("\nUpdate EXECUTABLE_EXTENSIONS in src/mailmail/provider.py if the page")
     print("is right.")
     return 1
 

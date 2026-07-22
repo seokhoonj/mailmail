@@ -10,8 +10,8 @@ from email.message import EmailMessage
 from email.utils import formatdate, make_msgid
 from typing import Self
 
-from mailrun.attachment import Attachment
-from mailrun.errors import InvalidMessageError
+from mailmail.attachment import Attachment
+from mailmail.errors import InvalidMessageError
 
 __all__ = ["Message"]
 

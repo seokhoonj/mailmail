@@ -13,7 +13,7 @@ smtp.naver.com was accepted without complaint and `login()` sent the app
 password straight through it.
 
 These tests do not read the code. They stand up a TLS server with a certificate
-signed by nobody, point mailrun at it, and check that mailrun refuses to talk --
+signed by nobody, point mailmail at it, and check that mailmail refuses to talk --
 which is the only claim worth making here, and the only one an implementation
 change cannot quietly break.
 """
@@ -25,8 +25,8 @@ import threading
 
 import pytest
 
-from mailrun import Mailer, Message, SmtpAccount
-from mailrun.provider import MailProvider
+from mailmail import Mailer, Message, SmtpAccount
+from mailmail.provider import MailProvider
 
 pytestmark = pytest.mark.skipif(
     subprocess.run(["which", "openssl"], capture_output=True).returncode != 0,
@@ -131,7 +131,7 @@ def account_pointed_at(port) -> SmtpAccount:
 
 class TestAServerNobodyVouchesFor:
     def test_the_handshake_is_refused(self, impostor, monkeypatch):
-        monkeypatch.setenv("MAILRUN_PASSWORD", "app-password")
+        monkeypatch.setenv("MAILMAIL_PASSWORD", "app-password")
         message = Message.compose(subject="s", body="b", to="lead@example.com")
 
         with (
@@ -149,7 +149,7 @@ class TestAServerNobodyVouchesFor:
         a refused connection, a protocol change. This one cannot: it fails only
         if the secret actually left the machine.
         """
-        monkeypatch.setenv("MAILRUN_PASSWORD", "app-password")
+        monkeypatch.setenv("MAILMAIL_PASSWORD", "app-password")
         message = Message.compose(subject="s", body="b", to="lead@example.com")
 
         with (

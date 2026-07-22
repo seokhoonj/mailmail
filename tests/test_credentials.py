@@ -6,20 +6,20 @@ import stat
 
 import pytest
 
-from mailrun.account import SmtpAccount
-from mailrun.credentials import (
+from mailmail.account import SmtpAccount
+from mailmail.credentials import (
     CREDENTIALS_FILE_MODE,
     default_credentials_path,
     delete_password,
     resolve_password,
     store_password,
 )
-from mailrun.errors import (
+from mailmail.errors import (
     CredentialsError,
     InsecureCredentialsError,
     MissingPasswordError,
 )
-from mailrun.provider import GMAIL, NAVER
+from mailmail.provider import GMAIL, NAVER
 
 NAVER_ACCOUNT = SmtpAccount(name="naver", username="me@naver.com", provider=NAVER)
 GMAIL_ACCOUNT = SmtpAccount(name="gmail", username="me@gmail.com", provider=GMAIL)
@@ -33,8 +33,8 @@ posix_only = pytest.mark.skipif(
 def credentials_path(tmp_path, monkeypatch):
     """Point the store at a throwaway file, never the operator's real one."""
     path = tmp_path / "credentials.json"
-    monkeypatch.setenv("MAILRUN_CREDENTIALS", str(path))
-    monkeypatch.delenv("MAILRUN_PASSWORD", raising=False)
+    monkeypatch.setenv("MAILMAIL_CREDENTIALS", str(path))
+    monkeypatch.delenv("MAILMAIL_PASSWORD", raising=False)
     return path
 
 
@@ -126,11 +126,11 @@ class TestStoreAndResolve:
 class TestEnvironmentOverride:
     def test_env_var_wins_over_the_file(self, credentials_path, monkeypatch):
         store_password(NAVER_ACCOUNT, "from-file")
-        monkeypatch.setenv("MAILRUN_PASSWORD", "from-env")
+        monkeypatch.setenv("MAILMAIL_PASSWORD", "from-env")
         assert resolve_password(NAVER_ACCOUNT) == "from-env"
 
     def test_env_var_alone_needs_no_file_at_all(self, credentials_path, monkeypatch):
-        monkeypatch.setenv("MAILRUN_PASSWORD", "from-env")
+        monkeypatch.setenv("MAILMAIL_PASSWORD", "from-env")
         assert resolve_password(NAVER_ACCOUNT) == "from-env"
         assert not credentials_path.exists()
 
@@ -233,8 +233,8 @@ class TestWhereTheFileModeIsNotReal:
         assert leftovers == []
 
     def test_parent_directory_is_created_when_absent(self, tmp_path, monkeypatch):
-        nested = tmp_path / "fresh" / "mailrun" / "credentials.json"
-        monkeypatch.setenv("MAILRUN_CREDENTIALS", str(nested))
+        nested = tmp_path / "fresh" / "mailmail" / "credentials.json"
+        monkeypatch.setenv("MAILMAIL_CREDENTIALS", str(nested))
         store_password(NAVER_ACCOUNT, "app-password")
         assert nested.exists()
 
@@ -255,7 +255,7 @@ class TestWriteIsAllOrNothing:
         def explode(*_args, **_kwargs):
             raise OSError("disk full, mid-write")
 
-        monkeypatch.setattr("mailrun.credentials.json.dump", explode)
+        monkeypatch.setattr("mailmail.credentials.json.dump", explode)
         with pytest.raises(OSError):
             store_password(GMAIL_ACCOUNT, "gmail-password")
 
@@ -272,7 +272,7 @@ class TestWriteIsAllOrNothing:
         def explode(*_args, **_kwargs):
             raise OSError("disk full, mid-write")
 
-        monkeypatch.setattr("mailrun.credentials.json.dump", explode)
+        monkeypatch.setattr("mailmail.credentials.json.dump", explode)
         with pytest.raises(OSError):
             store_password(GMAIL_ACCOUNT, "gmail-password")
 
@@ -319,14 +319,14 @@ class TestMalformedFile:
 
 class TestDefaultLocation:
     def test_credentials_sit_beside_the_config_not_in_the_project(self, monkeypatch):
-        monkeypatch.delenv("MAILRUN_CREDENTIALS", raising=False)
+        monkeypatch.delenv("MAILMAIL_CREDENTIALS", raising=False)
         monkeypatch.setenv("XDG_CONFIG_HOME", "/elsewhere/config")
         assert str(default_credentials_path()) == (
-            "/elsewhere/config/mailrun/credentials.json"
+            "/elsewhere/config/mailmail/credentials.json"
         )
 
     def test_explicit_env_override_wins(self, monkeypatch):
-        monkeypatch.setenv("MAILRUN_CREDENTIALS", "/tmp/other.json")
+        monkeypatch.setenv("MAILMAIL_CREDENTIALS", "/tmp/other.json")
         monkeypatch.setenv("XDG_CONFIG_HOME", "/elsewhere/config")
         assert str(default_credentials_path()) == "/tmp/other.json"
 
@@ -334,7 +334,7 @@ class TestDefaultLocation:
 class TestTheEnvironmentPasswordKnowsWhichAccountItIsFor:
     """One exported password used to answer for every provider.
 
-    `resolve_password(account)` read the bare `MAILRUN_PASSWORD` and returned
+    `resolve_password(account)` read the bare `MAILMAIL_PASSWORD` and returned
     before it ever looked at `account`. With two mailboxes configured -- which
     the config file expects, demanding `default_account` once there are two --
     exporting a Gmail app password for a one-off send and then sending as naver
@@ -343,13 +343,13 @@ class TestTheEnvironmentPasswordKnowsWhichAccountItIsFor:
     """
 
     def test_the_account_specific_name_wins(self, credentials_path, monkeypatch):
-        monkeypatch.setenv("MAILRUN_PASSWORD", "the-gmail-one")
-        monkeypatch.setenv("MAILRUN_PASSWORD_NAVER", "the-naver-one")
+        monkeypatch.setenv("MAILMAIL_PASSWORD", "the-gmail-one")
+        monkeypatch.setenv("MAILMAIL_PASSWORD_NAVER", "the-naver-one")
         assert resolve_password(NAVER_ACCOUNT) == "the-naver-one"
 
     def test_each_account_gets_its_own(self, credentials_path, monkeypatch):
-        monkeypatch.setenv("MAILRUN_PASSWORD_NAVER", "the-naver-one")
-        monkeypatch.setenv("MAILRUN_PASSWORD_GMAIL", "the-gmail-one")
+        monkeypatch.setenv("MAILMAIL_PASSWORD_NAVER", "the-naver-one")
+        monkeypatch.setenv("MAILMAIL_PASSWORD_GMAIL", "the-gmail-one")
         assert resolve_password(NAVER_ACCOUNT) == "the-naver-one"
         assert resolve_password(GMAIL_ACCOUNT) == "the-gmail-one"
 
@@ -357,7 +357,7 @@ class TestTheEnvironmentPasswordKnowsWhichAccountItIsFor:
         self, credentials_path, monkeypatch
     ):
         """The disclosure, stated as the thing that must not happen."""
-        monkeypatch.setenv("MAILRUN_PASSWORD_GMAIL", "the-gmail-one")
+        monkeypatch.setenv("MAILMAIL_PASSWORD_GMAIL", "the-gmail-one")
         with pytest.raises(MissingPasswordError):
             resolve_password(NAVER_ACCOUNT)
 
@@ -365,6 +365,6 @@ class TestTheEnvironmentPasswordKnowsWhichAccountItIsFor:
         self, credentials_path, monkeypatch
     ):
         # The single-account case, and the shared-password case: unchanged.
-        monkeypatch.setenv("MAILRUN_PASSWORD", "the-only-one")
+        monkeypatch.setenv("MAILMAIL_PASSWORD", "the-only-one")
         assert resolve_password(NAVER_ACCOUNT) == "the-only-one"
         assert resolve_password(GMAIL_ACCOUNT) == "the-only-one"

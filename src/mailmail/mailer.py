@@ -16,15 +16,15 @@ from email.message import EmailMessage
 from types import MappingProxyType, TracebackType
 from typing import Self
 
-from mailrun.account import SmtpAccount
-from mailrun.attachment import (
+from mailmail.account import SmtpAccount
+from mailmail.attachment import (
     check_attachments,
     check_message_size,
     estimate_encoded_bytes,
 )
-from mailrun.credentials import resolve_password
-from mailrun.errors import AuthenticationFailedError, RecipientRefusedError
-from mailrun.message import Message
+from mailmail.credentials import resolve_password
+from mailmail.errors import AuthenticationFailedError, RecipientRefusedError
+from mailmail.message import Message
 
 __all__ = ["DEFAULT_TIMEOUT_SECONDS", "Mailer", "SendReceipt"]
 
@@ -139,7 +139,7 @@ class Mailer:
             No password is stored, the credentials file is readable by others, or
             it is not readable JSON.
         AuthenticationFailedError
-            The server rejected the password. Note this is a `MailrunError`, not
+            The server rejected the password. Note this is a `MailmailError`, not
             an `smtplib.SMTPException` -- authentication is the one session
             failure this package translates, because "authentication failed" on
             its own never tells the reader that an app password is what is wanted.
@@ -149,7 +149,7 @@ class Mailer:
             The session or the network failed -- the server hung up, DNS did not
             answer, the connection timed out, or the server's certificate is not
             trusted (`ssl.SSLCertVerificationError`, an `OSError`). Not a
-            `MailrunError`: these are the standard library's own, and wrapping
+            `MailmailError`: these are the standard library's own, and wrapping
             them would say less than they already do.
         """
         provider = self._account.provider

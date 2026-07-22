@@ -14,19 +14,19 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Any
 
-from mailrun.account import SmtpAccount
-from mailrun.contacts import AddressBook
-from mailrun.errors import ConfigError, UnknownAccountError
-from mailrun.provider import resolve_provider
+from mailmail.account import SmtpAccount
+from mailmail.contacts import AddressBook
+from mailmail.errors import ConfigError, UnknownAccountError
+from mailmail.provider import resolve_provider
 
 __all__ = ["Config", "default_config_path", "load_config"]
 
-CONFIG_PATH_ENV_VAR = "MAILRUN_CONFIG"
+CONFIG_PATH_ENV_VAR = "MAILMAIL_CONFIG"
 
 
 @dataclass(frozen=True, slots=True)
 class Config:
-    """Everything mailrun needs that is not a secret.
+    """Everything mailmail needs that is not a secret.
 
     Attributes
     ----------
@@ -73,17 +73,17 @@ class Config:
 
 
 def default_config_path() -> Path:
-    """Where mailrun looks for its configuration.
+    """Where mailmail looks for its configuration.
 
-    `MAILRUN_CONFIG` wins; otherwise the XDG location,
-    `~/.config/mailrun/config.toml`.
+    `MAILMAIL_CONFIG` wins; otherwise the XDG location,
+    `~/.config/mailmail/config.toml`.
     """
     override = os.environ.get(CONFIG_PATH_ENV_VAR)
     if override:
         return Path(override).expanduser()
     xdg_home = os.environ.get("XDG_CONFIG_HOME")
     config_home = Path(xdg_home).expanduser() if xdg_home else Path.home() / ".config"
-    return config_home / "mailrun" / "config.toml"
+    return config_home / "mailmail" / "config.toml"
 
 
 def load_config(path: Path | str | None = None) -> Config:
@@ -94,7 +94,7 @@ def load_config(path: Path | str | None = None) -> Config:
     ConfigError
         The file is missing, is not valid TOML, or omits something required.
     UnknownProviderError
-        An account names a provider mailrun does not know.
+        An account names a provider mailmail does not know.
     """
     path = Path(path).expanduser() if path is not None else default_config_path()
     try:
@@ -133,7 +133,7 @@ def _as_config(document: dict[str, Any], *, path: Path) -> Config:
         )
     if "defaults" in document:
         raise ConfigError(
-            f"{path} has a [defaults] table, which mailrun no longer reads. "
+            f"{path} has a [defaults] table, which mailmail no longer reads. "
             f"Default recipients fired on omission, so a configured cc rode "
             f"along on every message that did not mention one -- including the "
             f"note meant for one person. Name recipients on the call instead "
