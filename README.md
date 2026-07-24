@@ -23,6 +23,7 @@ book so you can call the people you write often by name.
 - [3. Get an app password](#3-get-an-app-password) — Naver, Gmail
 - [4. Send mail](#4-send-mail)
 - [Many at once (mail merge)](#many-at-once-mail-merge) (`send_bulk`)
+- [From the command line](#from-the-command-line) (`mailmail`)
 - [Files you can't send](#files-you-cant-send)
 - [Use it from Claude Code](#use-it-from-claude-code)
 - [When something goes wrong](#when-something-goes-wrong)
@@ -306,6 +307,55 @@ A few things to know:
   already gone and cannot be unsent, and the receipts collected so far are lost. What
   the server refuses **per recipient** goes into the receipt, not an exception.
 
+### From the command line
+
+Everything above works from a terminal too, no Python required — installing the package
+puts a `mailmail` command on your `PATH`.
+
+```sh
+mailmail send --to lead --subject "Weekly report" --body "Please review."
+```
+
+`--to` (and `--cc`, `--bcc`) take an address or an address-book name, and repeat for
+several; `--attach` repeats too. A body with line breaks reads better from a file or a
+pipe than as one shell argument:
+
+```sh
+mailmail send --to team --subject "Month-end close" \
+    --body-file note.txt --attach close.xlsx --attach notes.pdf --account gmail
+
+mailmail send --to lead --subject "Weekly report" < note.txt
+```
+
+Send many at once from a CSV — one row per message, one login for the batch. The header
+names the fields: `to`, `subject`, and `body` are required; `cc`, `bcc`, `html`, and
+`attachments` are optional. A cell holding several entries (recipients, attachments)
+separates them with a semicolon:
+
+```sh
+mailmail send-bulk batch.csv --account gmail
+```
+
+```csv
+to,subject,body,attachments
+alice@example.com,June results,"Hi Alice, yours is attached.",alice.xlsx
+team,June summary,"All figures attached.",june.xlsx;notes.pdf
+```
+
+The other three commands set things up and check them:
+
+```sh
+mailmail setup                         # the config and credentials paths, and a template
+mailmail contacts                      # the accounts and address-book names you can use
+mailmail set-password --account naver  # store the app password, prompted
+```
+
+`set-password` asks for the password at a prompt instead of taking it as an argument, so
+it never lands in your shell history. Anything a send would reject — a blocked
+attachment, a message over the limit, a missing password — is reported the same way it
+is from Python, before a connection opens. A partial refusal exits non-zero, so a script
+can tell.
+
 ### Files you can't send
 
 Attachments a mail service would reject are reported **before sending**, as an
@@ -399,6 +449,7 @@ mypy
 - [3. 앱 비밀번호 받기](#3-앱-비밀번호-받기) — NAVER, Gmail
 - [4. 메일 보내기](#4-메일-보내기)
 - [여러 통 한 번에 (메일 머지)](#여러-통-한-번에-메일-머지) (`send_bulk`)
+- [명령줄에서 쓰기](#명령줄에서-쓰기) (`mailmail`)
 - [못 보내는 파일](#못-보내는-파일)
 - [Claude Code에서 쓰기](#claude-code에서-쓰기)
 - [문제가 생기면](#문제가-생기면)
@@ -666,6 +717,53 @@ for receipt in receipts:
   첨부만 재고 완성된 MIME은 못 잰다), (2) 보내는 도중 연결이 끊기면(네트워크 장애). 둘 다
   앞 통은 이미 나간 뒤라 되돌릴 수 없고, 그때까지 모은 receipt도 잃는다. 서버가
   **수신자별로** 거부한 것은 예외가 아니라 receipt에 담긴다.
+
+### 명령줄에서 쓰기
+
+위의 모든 것은 파이썬 없이 터미널에서도 된다 — 패키지를 설치하면 `mailmail` 명령이
+`PATH`에 올라간다.
+
+```sh
+mailmail send --to lead --subject "주간 보고" --body "검토 부탁드립니다."
+```
+
+`--to`(그리고 `--cc`, `--bcc`)는 주소나 주소록 이름을 받고, 여러 개면 반복해서 준다.
+`--attach`도 반복된다. 줄바꿈이 있는 본문은 셸 인자 하나로 넘기기보다 파일이나 파이프로
+주는 편이 낫다.
+
+```sh
+mailmail send --to team --subject "월말 결산" \
+    --body-file note.txt --attach close.xlsx --attach notes.pdf --account gmail
+
+mailmail send --to lead --subject "주간 보고" < note.txt
+```
+
+CSV로 여러 통 한 번에 — 한 행이 한 통, 배치 전체가 로그인 한 번이다. 헤더가 필드 이름이고,
+`to`·`subject`·`body`는 필수, `cc`·`bcc`·`html`·`attachments`는 선택이다. 한 셀에 여러 개가
+들어가는 칸(수신자, 첨부)은 세미콜론으로 나눈다.
+
+```sh
+mailmail send-bulk batch.csv --account gmail
+```
+
+```csv
+to,subject,body,attachments
+cheolsu@example.com,6월 실적,"철수님, 첨부 확인 부탁드립니다.",cheolsu.xlsx
+team,6월 요약,"수치 전부 첨부했습니다.",june.xlsx;notes.pdf
+```
+
+나머지 세 명령은 설정하고 확인하는 용도다.
+
+```sh
+mailmail setup                         # 설정·자격증명 파일 경로와 템플릿
+mailmail contacts                      # 쓸 수 있는 계정과 주소록 이름
+mailmail set-password --account naver  # 앱 비밀번호 저장(프롬프트로)
+```
+
+`set-password`는 비밀번호를 인자로 받지 않고 프롬프트로 묻는다. 그래서 셸 히스토리에 남지
+않는다. 차단된 첨부, 한도를 넘는 메일, 없는 비밀번호처럼 발송이 거부할 것은 파이썬에서와
+똑같이 연결을 열기 전에 알려준다. 일부만 거부되면 종료 코드가 0이 아니어서 스크립트가
+알아챌 수 있다.
 
 ### 못 보내는 파일
 

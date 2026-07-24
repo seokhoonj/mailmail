@@ -69,6 +69,14 @@ class TestTheConfigExampleWorks:
                 f"{alias!r} resolved to something that is not an address: {resolved}"
             )
 
+    def test_it_is_the_packages_starter_config(self):
+        """The README's config block and `mailmail setup`'s template are one
+        text. The package owns it (`STARTER_CONFIG`); the README and the CLI both
+        show that one, so a schema change cannot leave a stale copy behind."""
+        from mailmail import STARTER_CONFIG
+
+        assert config_block().strip() == STARTER_CONFIG.strip()
+
     def test_it_does_not_teach_a_defaults_table(self):
         """The config example is what people paste. A `[defaults]` table in it
         would not merely be stale -- `load_config` refuses the whole file."""

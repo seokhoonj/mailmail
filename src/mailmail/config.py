@@ -19,9 +19,30 @@ from mailmail.contacts import AddressBook
 from mailmail.errors import ConfigError, UnknownAccountError
 from mailmail.provider import resolve_provider
 
-__all__ = ["Config", "default_config_path", "load_config"]
+__all__ = ["STARTER_CONFIG", "Config", "default_config_path", "load_config"]
 
 CONFIG_PATH_ENV_VAR = "MAILMAIL_CONFIG"
+
+# A ready-to-edit configuration, printed by `mailmail setup` and shown in the
+# README. It lives here, beside the parser that reads this exact shape, so the
+# schema has one home: a provider renamed in `provider.py` or a key changed in
+# `_as_config` is a change a reader makes here too, not in a copy that drifts.
+STARTER_CONFIG = """\
+default_account = "naver"
+
+[accounts.naver]
+provider = "naver"
+username = "you@naver.com"
+
+[accounts.gmail]
+provider = "gmail"
+username = "you@gmail.com"
+
+[contacts]
+me   = "you@naver.com"
+lead = "lead@example.com"
+team = ["me", "lead"]
+"""
 
 
 @dataclass(frozen=True, slots=True)

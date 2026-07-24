@@ -29,6 +29,9 @@ classifiers = [
 # worth more than any convenience a third party would add.
 dependencies = []
 
+[project.scripts]
+mailmail = "mailmail.cli:main"
+
 [project.optional-dependencies]
 dev = [
     "mypy>=1.11",

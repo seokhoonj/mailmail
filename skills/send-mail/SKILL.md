@@ -39,6 +39,25 @@ been created yet (README step 1).
 
 The examples below write the resolved path as `$MAILMAIL_PY`.
 
+## A command-line alternative
+
+The package ships a `mailmail` console command, reachable through the same
+interpreter as `$MAILMAIL_PY -m mailmail ...`. It is the same package underneath, so
+it enforces the same checks and raises the same exceptions -- it is a second door,
+not a second brain. Use whichever fits the step; the confirmation in step 2 is
+required either way, because the command sends the moment it runs.
+
+- Read the address book: `$MAILMAIL_PY -m mailmail contacts` prints the accounts (the
+  default marked) and every alias expanded to its addresses.
+- First-time setup: `$MAILMAIL_PY -m mailmail setup` prints where the config and
+  credentials go, plus a starter template. `$MAILMAIL_PY -m mailmail set-password
+  --account <name>` stores the app password at a prompt -- so it is never typed on the
+  command line, and never has to be pasted into the chat.
+- Send: `$MAILMAIL_PY -m mailmail send --to <name> --subject <subject> --body-file
+  <path> --account <name>`. Pass the body through `--body-file` (or stdin) rather than
+  `--body`, for the same reason the script below writes it to a file: a body with
+  newlines, quotes, or non-ASCII text should not have to survive shell quoting.
+
 ## Procedure
 
 ### 1. Work out what to send

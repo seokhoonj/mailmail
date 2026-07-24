@@ -24,7 +24,12 @@ from pathlib import Path
 
 from mailmail.account import SmtpAccount
 from mailmail.attachment import Attachment
-from mailmail.config import Config, default_config_path, load_config
+from mailmail.config import (
+    STARTER_CONFIG,
+    Config,
+    default_config_path,
+    load_config,
+)
 from mailmail.contacts import AddressBook, resolve_recipients
 from mailmail.credentials import (
     PASSWORD_ENV_VAR,
@@ -61,6 +66,7 @@ __all__ = [
     "GMAIL",
     "NAVER",
     "PASSWORD_ENV_VAR",
+    "STARTER_CONFIG",
     "AddressBook",
     "Attachment",
     "AttachmentError",
