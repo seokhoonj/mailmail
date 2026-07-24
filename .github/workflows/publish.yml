@@ -16,6 +16,10 @@ jobs:
     runs-on: ubuntu-latest
     environment: pypi
     permissions:
+      # Naming any permission drops every unnamed one to `none`, so `contents`
+      # has to be listed back: checkout clones with the job token, and this repo
+      # is private, so without read here that clone fails "repository not found".
+      contents: read
       id-token: write   # required for OIDC; this is what replaces a stored token
     steps:
       # Pinned the same way check.yml is: checkout past its mutable tag to a
