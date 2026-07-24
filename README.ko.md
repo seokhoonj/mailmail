@@ -8,6 +8,7 @@ NAVER·Gmail 계정으로 메일을 보내는 파이썬 패키지. 첨부파일,
 ---
 
 - [빠른 시작](#빠른-시작)
+- [구조 한눈에](#구조-한눈에)
 - [준비물](#준비물)
 - [1. 설치](#1-설치)
 - [2. 계정 설정](#2-계정-설정) (`~/.config/mailmail/config.toml`)
@@ -37,6 +38,24 @@ Claude Code를 쓴다면 파이썬을 몰라도 말로 보낼 수 있다 → [Cl
 
 Windows·macOS·Linux에서 동작한다. 설치되는 것은 이 패키지뿐이고, 다른 라이브러리를 함께
 끌어오지 않는다.
+
+### 구조 한눈에
+
+`send()` 한 번은 설정을 읽고, 계정을 고르고, 별칭을 풀어 메시지를 만들고, provider가
+반송할 것 — 차단된 파일 형식, 크기 한도를 넘는 메일 — 은 연결을 열기 전에 막고, 결과를
+`SendReceipt`로 돌려준다.
+
+```mermaid
+flowchart TB
+    caller["send(to='lead', subject=..., body=...)"] --> cfg["load_config()<br/>config.toml"]
+    cfg --> acct["resolve_account()<br/>SmtpAccount + provider"]
+    acct --> compose["compose_message()<br/>별칭 풀기, 파일 첨부"]
+    compose --> screen{"provider가 실을 수 있나?<br/>차단 형식, 크기 한도"}
+    screen -->|"불가"| refuse["raise<br/>(연결을 열기 전에)"]
+    screen -->|"가능"| connect["Mailer<br/>STARTTLS + 앱 비밀번호 로그인"]
+    connect --> server(("Gmail<br/>Naver"))
+    server --> receipt["SendReceipt<br/>accepted · refused · message-id"]
+```
 
 ### 준비물
 

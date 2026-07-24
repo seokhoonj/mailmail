@@ -16,6 +16,7 @@ book so you can call the people you write often by name.
 ---
 
 - [Quick start](#quick-start)
+- [At a glance](#at-a-glance)
 - [What you need](#what-you-need)
 - [1. Install](#1-install)
 - [2. Configure your accounts](#2-configure-your-accounts) (`~/.config/mailmail/config.toml`)
@@ -46,6 +47,25 @@ Using Claude Code, you can send mail by asking, without writing any Python →
 
 Runs on Windows, macOS, and Linux. Installing it installs this package and nothing
 else — it pulls in no other libraries.
+
+### At a glance
+
+One `send()` reads the config, picks the account, resolves aliases and builds the
+message, refuses anything the provider would bounce — a blocked file type, a
+message over the size limit — before the connection is ever opened, and returns
+the outcome as a `SendReceipt`.
+
+```mermaid
+flowchart TB
+    caller["send(to='lead', subject=..., body=...)"] --> cfg["load_config()<br/>config.toml"]
+    cfg --> acct["resolve_account()<br/>SmtpAccount + provider"]
+    acct --> compose["compose_message()<br/>resolve aliases, attach files"]
+    compose --> screen{"can the provider carry it?<br/>blocked type, size limit"}
+    screen -->|"no"| refuse["raise<br/>(before the connection opens)"]
+    screen -->|"yes"| connect["Mailer<br/>STARTTLS + app-password login"]
+    connect --> server(("Gmail<br/>Naver"))
+    server --> receipt["SendReceipt<br/>accepted · refused · message-id"]
+```
 
 ### What you need
 
