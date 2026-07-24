@@ -1,0 +1,13 @@
+{
+  "name": "mailmail",
+  "owner": {
+    "name": "seokhoonj"
+  },
+  "plugins": [
+    {
+      "name": "mailmail",
+      "source": "./",
+      "description": "Send a result, report, or file from a Claude Code conversation as email through Gmail or Naver SMTP. Calls the mailmail package's send()."
+    }
+  ]
+}

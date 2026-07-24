@@ -1,0 +1,11 @@
+{
+  "name": "mailmail",
+  "description": "Send a result, report, or file from a Claude Code conversation as email through Gmail or Naver SMTP. Requires the mailmail Python package (pip install mailmail).",
+  "version": "0.1.0",
+  "author": {
+    "name": "seokhoonj"
+  },
+  "homepage": "https://github.com/seokhoonj/mailmail",
+  "repository": "https://github.com/seokhoonj/mailmail",
+  "license": "MIT"
+}
