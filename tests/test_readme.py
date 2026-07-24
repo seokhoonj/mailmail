@@ -20,25 +20,36 @@ from mailmail import load_config, resolve_recipients
 from mailmail.attachment import _ENCODED_EXPANSION
 from mailmail.provider import GMAIL, NAVER
 
-README = Path(__file__).parent.parent / "README.md"
+README_EN = Path(__file__).parent.parent / "README.md"
+README_KO = Path(__file__).parent.parent / "README.ko.md"
 
 
-def readme_text() -> str:
-    return README.read_text(encoding="utf-8")
+def readme_texts() -> list[str]:
+    """Both language files. The README is split one language per file (English in
+    `README.md`, Korean in `README.ko.md`), so a fact that must appear "in the
+    README" is checked against both."""
+    return [
+        README_EN.read_text(encoding="utf-8"),
+        README_KO.read_text(encoding="utf-8"),
+    ]
 
 
 def config_block() -> str:
     """The TOML the reader is told to write into `~/.config/mailmail/config.toml`.
 
-    The README is bilingual, so the config example appears once per language. They
-    must be identical -- a config that drifts between the English and Korean copies
-    is the paste-and-fail this whole module guards against -- so assert that and
-    return the one.
+    The example appears once in each language file, and the two must be
+    identical -- a config that drifts between the English and Korean copies is the
+    paste-and-fail this whole module guards against -- so gather every block from
+    both files, assert they agree, and return the one.
     """
-    blocks: list[str] = re.findall(r"```toml\n(.*?)```", readme_text(), re.DOTALL)
+    blocks: list[str] = [
+        block
+        for text in readme_texts()
+        for block in re.findall(r"```toml\n(.*?)```", text, re.DOTALL)
+    ]
     assert blocks, "expected a toml config block in the README"
     assert all(block == blocks[0] for block in blocks), (
-        "the README's toml config blocks differ between languages"
+        "the README's toml config blocks differ between README.md and README.ko.md"
     )
     return blocks[0]
 
@@ -99,44 +110,47 @@ class TestTheFactsItStatesAreTheCodesFacts:
     """
 
     def test_the_size_limits_it_advises_match_the_providers(self):
-        """Both language sections pin the ceiling a reader acts on.
+        """Each language file pins the ceiling a reader acts on.
 
-        The README is bilingual: the English section states "N MB for <Provider>",
-        the Korean "<PROVIDER> 약 NMB", and both have to agree with the code. It
-        used to be the byte count -- 35,882,577 -- which nobody weighs a file
-        against. The figure has to survive the same arithmetic the package does:
-        the server's ceiling is post-encoding, and base64 adds about 37%.
+        `README.md` states "N MB for <Provider>", `README.ko.md` "<PROVIDER> 약
+        NMB", and both have to agree with the code. It used to be the byte count
+        -- 35,882,577 -- which nobody weighs a file against. The figure has to
+        survive the same arithmetic the package does: the server's ceiling is
+        post-encoding, and base64 adds about 37%.
 
         Truncated, not rounded. For a ceiling, 27 is safe advice at 27.8 MiB and
         28 is an over-promise.
         """
-        body = readme_text()
+        english_body = README_EN.read_text(encoding="utf-8")
+        korean_body = README_KO.read_text(encoding="utf-8")
         for provider in (GMAIL, NAVER):
             usable = provider.max_message_bytes / _ENCODED_EXPANSION
             advised = int(usable / 1024 / 1024)
-            # Each section names the service the way it brands itself, which is
-            # also what `provider.name` holds.
+            # Each file names the service the way it brands itself, which is also
+            # what `provider.name` holds.
             english = f"{advised} MB for {provider.name.capitalize()}"
             korean = f"{provider.name.upper()} 약 {advised}MB"
-            assert english in body, (
-                f"the English README does not advise {provider.name}'s real "
+            assert english in english_body, (
+                f"README.md does not advise {provider.name}'s real "
                 f"ceiling ({advised} MB of original files)"
             )
-            assert korean in body.upper(), (
-                f"the Korean README does not advise {provider.name}'s real "
+            assert korean in korean_body.upper(), (
+                f"README.ko.md does not advise {provider.name}'s real "
                 f"ceiling ({advised}MB of original files)"
             )
 
     def test_it_does_not_claim_a_test_count(self):
         # It cannot be right for longer than it takes to add a test.
-        assert not re.search(r"\d+\s*개[,.]?\s*전부 오프라인", readme_text())
+        both = "\n".join(readme_texts())
+        assert not re.search(r"\d+\s*개[,.]?\s*전부 오프라인", both)
 
     def test_every_public_name_it_shows_exists(self):
         """A README that names a function the package does not export is a bug
         report from the future, filed by whoever pastes it."""
         import mailmail
 
-        shown = set(re.findall(r"from mailmail import ([^\n]+)", readme_text()))
+        both = "\n".join(readme_texts())
+        shown = set(re.findall(r"from mailmail import ([^\n]+)", both))
         names = {name.strip() for line in shown for name in line.split(",")}
         missing = [name for name in names if not hasattr(mailmail, name)]
         assert not missing, f"the README imports names that do not exist: {missing}"
