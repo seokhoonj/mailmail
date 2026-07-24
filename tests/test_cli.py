@@ -332,6 +332,14 @@ class TestUsage:
             main([])
         assert exit_info.value.code == 2
 
+    def test_version_flag_prints_the_package_version(self, capsys):
+        import mailmail
+
+        with pytest.raises(SystemExit) as exit_info:
+            main(["--version"])
+        assert exit_info.value.code == 0
+        assert capsys.readouterr().out.strip() == f"mailmail {mailmail.__version__}"
+
     def test_python_m_mailmail_wires_the_entry_point(self):
         # Exercises __main__.py end to end: `python -m mailmail` with no
         # subcommand must reach argparse and exit 2, proving the console entry is

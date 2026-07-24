@@ -1,0 +1,30 @@
+name: publish
+
+# Publish to PyPI when a GitHub Release is published. Authentication is PyPI
+# Trusted Publishing (OIDC): no token or password is stored anywhere -- GitHub
+# mints a short-lived identity that PyPI verifies against the publisher
+# registered for this repo (owner seokhoonj / repo mailmail / workflow
+# publish.yml / environment "pypi"). Register that publisher on PyPI first; until
+# the project exists there it is registered as a "pending" publisher.
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write   # required for OIDC; this is what replaces a stored token
+    steps:
+      # Pinned the same way check.yml is: checkout past its mutable tag to a
+      # commit, setup-uv on its immutable v8 tag, and the publish action past its
+      # moving release/v1 branch to a commit. dependabot proposes all three
+      # (.github/dependabot.yml). uv build writes the sdist and wheel to dist/,
+      # which the publish action uploads.
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: astral-sh/setup-uv@v8.3.2
+      - name: Build sdist and wheel
+        run: uv build
+      - uses: pypa/gh-action-pypi-publish@ba38be9e461d3875417946c167d0b5f3d385a247 # v1.14.1

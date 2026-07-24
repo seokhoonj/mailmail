@@ -66,6 +66,15 @@ jobs:
           print('mailmail', mailmail.__version__, 'imports with no third-party packages')
           "
 
+      - name: Confirm the console script installed
+        # pyproject declares a `mailmail` entry point; a wheel that dropped it
+        # would leave the CLI, the skill, and the docs pointing at a command that
+        # is not there. `--version` is the cheapest call that proves it runs.
+        run: |
+          uv venv /tmp/cli --python ${{ matrix.python-version }}
+          uv pip install --python /tmp/cli/bin/python .
+          /tmp/cli/bin/mailmail --version
+
       - name: Confirm a user's type checker can see the hints
         # Every hint in this package is invisible to a user unless py.typed ships
         # alongside it (PEP 561), and the source cannot answer whether it did:
@@ -78,10 +87,10 @@ jobs:
           uv venv /tmp/typed --python ${{ matrix.python-version }}
           uv pip install --python /tmp/typed/bin/python . mypy
           cat > /tmp/user_code.py <<'PY'
-          from mailmail import Message, send_mail
+          from mailmail import Message, send
 
           Message(subject="s", body="b", to="lead@example.com")  # 16 recipients
-          send_mail(subject="s", body="b")                       # no recipient
+          send(subject="s", body="b")                            # no recipient
           PY
           /tmp/typed/bin/mypy /tmp/user_code.py > /tmp/mypy_out 2>&1 || true
           cat /tmp/mypy_out

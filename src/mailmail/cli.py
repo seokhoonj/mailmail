@@ -8,10 +8,11 @@ reaches for it. It parses arguments, calls `send` / `send_bulk` /
 exceptions into an exit code. Anything it computed itself would be a second home
 for a fact the package already owns, and the two always drift.
 
-`main(argv)` returns the process exit code rather than calling `sys.exit`, so a
-test can drive a whole command and read the code back without catching
-`SystemExit`. `python -m mailmail` and the `mailmail` console script both enter
-here.
+`main(argv)` returns the process exit code for a dispatched subcommand rather
+than calling `sys.exit`, so a test can drive one and read the code back. The
+argparse-owned options -- `--version`, `--help`, and a usage error -- still exit
+the way argparse does, by raising `SystemExit` before any subcommand runs.
+`python -m mailmail` and the `mailmail` console script both enter here.
 """
 
 import argparse
@@ -27,6 +28,7 @@ from mailmail import (
     Mail,
     MailmailError,
     SendReceipt,
+    __version__,
     default_config_path,
     default_credentials_path,
     load_config,
@@ -57,9 +59,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     Returns
     -------
     int
-        The process exit code: 0 when the command fully succeeded, 1 for an
-        error the package raised or a send the server did not take in full, 2
-        for a usage error (argparse's own convention, raised before dispatch).
+        The exit code for a dispatched subcommand: 0 when it fully succeeded, 1
+        for an error the package raised or a send the server did not take in
+        full. A usage error exits 2, and `--version`/`--help` exit 0, the way
+        argparse does -- by raising `SystemExit` before dispatch, not by
+        returning here.
     """
     parser = _build_parser()
     args = parser.parse_args(argv)
@@ -90,6 +94,9 @@ def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog        = "mailmail",
         description = "Send mail through Gmail or Naver SMTP.",
+    )
+    parser.add_argument(
+        "--version", action="version", version=f"mailmail {__version__}"
     )
     subcommands = parser.add_subparsers(dest="command", required=True)
 

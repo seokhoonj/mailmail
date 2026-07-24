@@ -13,9 +13,30 @@ user code). This file only guards the near end: the marker is in the source
 tree, so deleting it fails here in a second rather than in CI in a minute.
 """
 
+import importlib.metadata
 from pathlib import Path
 
 import mailmail
+
+
+def test_the_distribution_and_runtime_versions_agree():
+    """The version `pip show` reports and the one `mailmail.__version__` returns
+    are the same number.
+
+    The version is written twice on purpose -- once in `pyproject.toml`, which
+    the build reads into the distribution metadata, and once as `__version__`, so
+    a caller can read it without `importlib.metadata`. The Python packaging guide
+    sanctions that duplication and asks for exactly this in return: a test that
+    the two do not drift.
+
+    It bites on a fresh install -- what CI does on every run, and what a user's
+    `pip install` does: a bumped `pyproject.toml` that forgot `__version__` (or
+    the reverse) fails here, because `importlib.metadata.version` reads the
+    just-installed metadata. Under an editable install the metadata is frozen at
+    install time, so a later edit to one file can slip past until the next
+    reinstall; the run that gates a release is the fresh one, and there it holds.
+    """
+    assert importlib.metadata.version("mailmail") == mailmail.__version__
 
 
 def test_the_py_typed_marker_sits_beside_the_code():
