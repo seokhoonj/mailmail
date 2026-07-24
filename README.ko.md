@@ -21,7 +21,7 @@ NAVER·Gmail 계정으로 메일을 보내는 파이썬 패키지. 첨부파일,
 - [문제가 생기면](#문제가-생기면)
 - [개발](#개발)
 
-### 빠른 시작
+## 빠른 시작
 
 ```python
 from mailmail import send
@@ -39,7 +39,7 @@ Claude Code를 쓴다면 파이썬을 몰라도 말로 보낼 수 있다 → [Cl
 Windows·macOS·Linux에서 동작한다. 설치되는 것은 이 패키지뿐이고, 다른 라이브러리를 함께
 끌어오지 않는다.
 
-### 구조 한눈에
+## 구조 한눈에
 
 `send()` 한 번은 설정을 읽고, 계정을 고르고, 별칭을 풀어 메시지를 만들고, provider가
 반송할 것 — 차단된 파일 형식, 크기 한도를 넘는 메일 — 은 연결을 열기 전에 막고, 결과를
@@ -57,7 +57,7 @@ flowchart TB
     server --> receipt["SendReceipt<br/>accepted · refused · message-id"]
 ```
 
-### 준비물
+## 준비물
 
 - **Python 3.11 이상.** 터미널에서 `python --version`으로 확인한다. (Windows에서는 `py
   --version`일 수 있다.) 없거나 낮으면 [python.org](https://www.python.org/downloads/)에서
@@ -69,7 +69,7 @@ flowchart TB
 - **그 계정의 앱 비밀번호.** 3단계에서 받는다. **평소 로그인하는 비밀번호로는 안 된다** —
   두 서비스 다 거부한다.
 
-### 1. 설치
+## 1. 설치
 
 ```sh
 pip install mailmail
@@ -81,7 +81,7 @@ pip install mailmail
 python -c "import mailmail; print(mailmail.__version__)"
 ```
 
-### 2. 계정 설정
+## 2. 계정 설정
 
 홈 폴더 아래 `.config/mailmail/` 에 `config.toml` 파일을 만든다. 전체 경로는 이렇다.
 
@@ -116,7 +116,7 @@ team = ["me", "lead"]
 
 **비밀번호는 이 파일에 넣지 않는다.** 3단계에서 따로 저장한다.
 
-### 3. 앱 비밀번호 받기
+## 3. 앱 비밀번호 받기
 
 **여기가 가장 많이 막히는 곳이다.** 평소 로그인 비밀번호는 두 서비스 다 거부하고, 앱
 비밀번호를 따로 발급받아야 한다. 둘의 형식이 정반대라 헷갈리기 쉽다.
@@ -126,7 +126,7 @@ team = ["me", "lead"]
 | **NAVER** | **12자리** | **대문자 + 숫자** | 필수 |
 | **Gmail** | **16자리** | **소문자** | 필수 |
 
-#### NAVER
+### NAVER
 
 2025년 6월 24일부터 메일 프로그램 연결에 2단계 인증과 앱 비밀번호가 **필수**가 되었다. 예전에
 잘 되던 설정이 갑자기 안 된다면 그 때문이다.
@@ -140,14 +140,14 @@ team = ["me", "lead"]
    **사용 안 함 → 저장 → 사용함 → 저장** 으로 한 번 껐다 켠다. 2025년 6월 정책 변경이 이때
    반영된다.
 
-#### Gmail
+### Gmail
 
 1. **2단계 인증을 먼저 켠다.** 안 켜면 앱 비밀번호 메뉴가 나타나지 않는다.
 2. [myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords) 에서
    발급한다.
 3. 16자리 소문자가 네 칸씩 띄어서 나온다. 공백은 있든 없든 상관없다.
 
-#### 받은 비밀번호 저장하기
+### 받은 비밀번호 저장하기
 
 **한 번만 저장하면 그 뒤로는 다시 묻지 않는다.** 아래를 실행하면 입력을 받는다.
 
@@ -172,7 +172,7 @@ print('  saved')
 메일 발송에만 쓰이고, 계정 비밀번호는 그대로 둔 채 언제든 취소할 수 있다. 계정 비밀번호는
 넣지 않는다.
 
-#### 잘 됐는지 확인
+### 잘 됐는지 확인
 
 메일을 보내보지 않고도 로그인만 시험할 수 있다.
 
@@ -201,7 +201,7 @@ for name in ('naver',):  # Gmail도 저장했으면 ('naver', 'gmail')
 | `535 5.7.1 Username and Password not accepted` (NAVER) | 비밀번호가 틀렸거나, SMTP가 꺼져 있다. **둘 다 확인한다** — 이 메시지는 구분해주지 않는다 |
 | `534 5.7.9 Application-specific password required` (Gmail) | 로그인 비밀번호를 넣었다. 앱 비밀번호로 다시 |
 
-### 4. 메일 보내기
+## 4. 메일 보내기
 
 ```python
 from mailmail import send
@@ -262,7 +262,7 @@ if not receipt.is_complete:  # 일부 주소가 거부됐을 때
   쓰면 사람마다 다른 메일을 읽게 된다.
 - **한글은 그냥 쓰면 된다.** 제목이든 본문이든 따로 처리할 게 없다.
 
-### 여러 통 한 번에 (메일 머지)
+## 여러 통 한 번에 (메일 머지)
 
 같은 안내를 사람마다 다른 값·다른 첨부로 보낼 때는 `send_bulk`을 쓴다. 한 명에 `Mail`
 하나씩 담으면, 전부 **연결 하나로** 나간다 — 서른 명이면 로그인이 서른 번이 아니라 한
@@ -299,7 +299,7 @@ for receipt in receipts:
   앞 통은 이미 나간 뒤라 되돌릴 수 없고, 그때까지 모은 receipt도 잃는다. 서버가
   **수신자별로** 거부한 것은 예외가 아니라 receipt에 담긴다.
 
-### 명령줄에서 쓰기
+## 명령줄에서 쓰기
 
 위의 모든 것은 파이썬 없이 터미널에서도 된다 — 패키지를 설치하면 `mailmail` 명령이
 `PATH`에 올라간다.
@@ -346,7 +346,7 @@ mailmail set-password --account naver  # 앱 비밀번호 저장(프롬프트로
 똑같이 연결을 열기 전에 알려준다. 일부만 거부되면 종료 코드가 0이 아니어서 스크립트가
 알아챌 수 있다.
 
-### 못 보내는 파일
+## 못 보내는 파일
 
 메일 서비스가 거부할 첨부는 **보내기 전에** 예외로 알려준다. 서버까지 갔다가 몇 분 뒤
 반송 메일로 아는 것보다 낫기 때문이다.
@@ -367,7 +367,7 @@ mailmail set-password --account naver  # 앱 비밀번호 저장(프롬프트로
 실행파일이 들어 있으면 검사를 통과해 서버까지 갔다가 거부된다. 이 두 형식은 쓰지 않는 편이
 낫다.
 
-### Claude Code에서 쓰기
+## Claude Code에서 쓰기
 
 [Claude Code](https://claude.com/claude-code)에 스킬을 설치하면 파이썬을 쓰지 않고 **말로**
 메일을 보낼 수 있다. 스킬은 Claude에게 "이런 요청이 오면 이렇게 해라"를 알려주는 설명서다.
@@ -397,7 +397,7 @@ New-Item -ItemType SymbolicLink -Path "$HOME\.claude\skills\send" `
 풀어서 보여주므로, `team`이 정확히 누구에게 가는지 눈으로 확인할 수 있다. 메일은 되돌릴 수
 없기 때문이다.
 
-### 문제가 생기면
+## 문제가 생기면
 
 예외 메시지가 무엇이 잘못됐고 어떻게 고치는지를 문장으로 알려준다.
 
@@ -410,7 +410,7 @@ New-Item -ItemType SymbolicLink -Path "$HOME\.claude\skills\send" `
 | `MessageTooLargeError` | 첨부가 한도를 넘는다 |
 | `AuthenticationFailedError` | 로그인이 거부됐다. 앱 비밀번호가 맞는지, NAVER라면 SMTP가 켜져 있는지 |
 
-### 개발
+## 개발
 
 ```sh
 git clone https://github.com/seokhoonj/mailmail.git

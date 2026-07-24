@@ -29,7 +29,7 @@ book so you can call the people you write often by name.
 - [When something goes wrong](#when-something-goes-wrong)
 - [Development](#development)
 
-### Quick start
+## Quick start
 
 ```python
 from mailmail import send
@@ -48,7 +48,7 @@ Using Claude Code, you can send mail by asking, without writing any Python →
 Runs on Windows, macOS, and Linux. Installing it installs this package and nothing
 else — it pulls in no other libraries.
 
-### At a glance
+## At a glance
 
 One `send()` reads the config, picks the account, resolves aliases and builds the
 message, refuses anything the provider would bounce — a blocked file type, a
@@ -67,7 +67,7 @@ flowchart TB
     server --> receipt["SendReceipt<br/>accepted · refused · message-id"]
 ```
 
-### What you need
+## What you need
 
 - **Python 3.11 or newer.** Check with `python --version` in a terminal (on Windows
   it may be `py --version`). If it is missing or older, get it from
@@ -81,7 +81,7 @@ flowchart TB
 - **That account's app password.** You get it in step 3. **Your normal login
   password will not work** — both services reject it over SMTP.
 
-### 1. Install
+## 1. Install
 
 ```sh
 pip install mailmail
@@ -93,7 +93,7 @@ Check it landed:
 python -c "import mailmail; print(mailmail.__version__)"
 ```
 
-### 2. Configure your accounts
+## 2. Configure your accounts
 
 Create a `config.toml` under `.config/mailmail/` in your home folder. The full path:
 
@@ -129,7 +129,7 @@ team = ["me", "lead"]
 
 **The password does not go in this file.** You store it separately in step 3.
 
-### 3. Get an app password
+## 3. Get an app password
 
 **This is where people get stuck most.** Both services reject your normal login
 password and make you generate a separate app password. The two formats are near
@@ -140,7 +140,7 @@ opposites, which is easy to confuse.
 | **Naver** | **12 characters** | **UPPERCASE + digits** | required |
 | **Gmail** | **16 characters** | **lowercase** | required |
 
-#### Naver
+### Naver
 
 Since 2025-06-24, connecting a mail program requires two-step verification and an
 app password. If a setup that used to work suddenly stopped, this is why.
@@ -157,7 +157,7 @@ app password. If a setup that used to work suddenly stopped, this is why.
    already is, toggle it once: **Off → Save → On → Save.** That is what applies the
    June 2025 policy change to an older account.
 
-#### Gmail
+### Gmail
 
 1. **Turn on two-step verification first.** Without it, the app-password menu does
    not appear.
@@ -166,7 +166,7 @@ app password. If a setup that used to work suddenly stopped, this is why.
 3. A 16-character lowercase password appears in four groups. The spaces don't
    matter — keep them or drop them.
 
-#### Store the password you got
+### Store the password you got
 
 **Store it once and you are not asked again.** Running this prompts for it:
 
@@ -192,7 +192,7 @@ goes in it is an **app password**: it is used only to send mail, it leaves your
 account password untouched, and you can revoke it any time. Do not put your account
 password here.
 
-#### Check it worked
+### Check it worked
 
 You can test just the login, without sending anything:
 
@@ -221,7 +221,7 @@ for name in ('naver',):  # ('naver', 'gmail') if you stored Gmail too
 | `535 5.7.1 Username and Password not accepted` (Naver) | Wrong password, or SMTP is off. **Check both** — this message does not tell them apart |
 | `534 5.7.9 Application-specific password required` (Gmail) | You used the login password. Try the app password |
 
-### 4. Send mail
+## 4. Send mail
 
 ```python
 from mailmail import send
@@ -286,7 +286,7 @@ A few things to know:
 - **Korean (or any non-ASCII) just works.** Nothing special to do in the subject or
   the body.
 
-### Many at once (mail merge)
+## Many at once (mail merge)
 
 To send the same note to many people with a different value or attachment for each,
 use `send_bulk`. One `Mail` per person, and they all go out over **one connection** —
@@ -326,7 +326,7 @@ A few things to know:
   already gone and cannot be unsent, and the receipts collected so far are lost. What
   the server refuses **per recipient** goes into the receipt, not an exception.
 
-### From the command line
+## From the command line
 
 Everything above works from a terminal too, no Python required — installing the package
 puts a `mailmail` command on your `PATH`.
@@ -375,7 +375,7 @@ attachment, a message over the limit, a missing password — is reported the sam
 is from Python, before a connection opens. A partial refusal exits non-zero, so a script
 can tell.
 
-### Files you can't send
+## Files you can't send
 
 Attachments a mail service would reject are reported **before sending**, as an
 exception. That beats learning it minutes later from a bounce (or from a message that
@@ -400,7 +400,7 @@ from the number the web UI shows; this is the one the server actually accepts.
 those formats. If one holds an executable it passes the check, reaches the server, and
 is refused there. Better not to use those two.
 
-### Use it from Claude Code
+## Use it from Claude Code
 
 Install the skill into [Claude Code](https://claude.com/claude-code) and you can send
 mail **by asking**, without writing Python. A skill is an instruction sheet that tells
@@ -431,7 +431,7 @@ Before sending, it **shows the recipients, subject, and attachments for approval
 Address-book names are expanded to real addresses, so you can see exactly who `team`
 reaches. Mail cannot be unsent.
 
-### When something goes wrong
+## When something goes wrong
 
 The exception message states, in words, what is wrong and how to fix it.
 
@@ -444,7 +444,7 @@ The exception message states, in words, what is wrong and how to fix it.
 | `MessageTooLargeError` | The attachments are over the limit |
 | `AuthenticationFailedError` | The login was refused. Check the app password is right, and for Naver that SMTP is on |
 
-### Development
+## Development
 
 ```sh
 git clone https://github.com/seokhoonj/mailmail.git
