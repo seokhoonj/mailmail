@@ -3,7 +3,7 @@
 This module authors no mail logic. Every fact a send depends on -- which file
 types a provider blocks, how a MIME message is assembled, what an alias resolves
 to, where a password is kept -- already lives in the package, and the CLI only
-reaches for it. It parses arguments, calls `send_mail` / `send_bulk` /
+reaches for it. It parses arguments, calls `send` / `send_bulk` /
 `load_config` / `store_password`, prints what came back, and turns the package's
 exceptions into an exit code. Anything it computed itself would be a second home
 for a fact the package already owns, and the two always drift.
@@ -31,8 +31,8 @@ from mailmail import (
     default_credentials_path,
     load_config,
     resolve_recipients,
+    send,
     send_bulk,
-    send_mail,
     store_password,
 )
 
@@ -150,7 +150,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def _send_cmd(args: argparse.Namespace) -> int:
-    receipt = send_mail(
+    receipt = send(
         to          = _as_addresses(args.to),
         cc          = _as_addresses(args.cc),
         bcc         = _as_addresses(args.bcc),
@@ -218,7 +218,7 @@ def _as_addresses(values: list[str] | None) -> tuple[str, ...]:
     """The recipients an --to/--cc/--bcc flag collected, or () when it was absent.
 
     argparse's `action="append"` leaves the attribute `None` until the flag
-    appears, and `send_mail` wants the empty case spelled as a tuple, not `None`.
+    appears, and `send` wants the empty case spelled as a tuple, not `None`.
     """
     return tuple(values or ())
 
@@ -292,7 +292,7 @@ def _mail_from_row(row: dict[str, str | None]) -> Mail:
     # a row with more fields than the header parks the surplus under a None key,
     # which the annotation ignores because nothing below asks for it.
     #
-    # subject and body are taken whole, the way send_mail takes them -- the CLI
+    # subject and body are taken whole, the way send takes them -- the CLI
     # does not strip them, so the CSV path and the flag path send identical
     # content. An empty html cell becomes None, not "": an empty string would
     # add a blank HTML alternative that clients render in place of the body.
@@ -337,7 +337,7 @@ def _report_receipt(receipt: SendReceipt, *, label: str = "") -> bool:
     bool
         `receipt.is_complete` -- True when every recipient was accepted. The
         caller turns this into the exit code, so a partial refusal, which
-        `send_mail` reports rather than raises, still surfaces as a failure to a
+        `send` reports rather than raises, still surfaces as a failure to a
         script.
     """
     prefix = f"{label} " if label else ""

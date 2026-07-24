@@ -193,7 +193,7 @@ class TestARetiredDefaultsTable:
         with pytest.raises(ConfigError) as caught:
             load_config(self.with_defaults(tmp_path, "[defaults]\ncc = 'lead'\n"))
         message = str(caught.value)
-        assert "send_mail(to=" in message  # name them on the call
+        assert "send(to=" in message  # name them on the call
         assert "delete the table" in message
 
     def test_an_empty_table_is_refused_too(self, tmp_path):

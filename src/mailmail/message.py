@@ -170,9 +170,9 @@ class Message:
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class Mail:
-    """One message to send, in the loose vocabulary `send_mail` accepts.
+    """One message to send, in the loose vocabulary `send` accepts.
 
-    The per-item input to `send_bulk`, and the shape `send_mail`'s own arguments
+    The per-item input to `send_bulk`, and the shape `send`'s own arguments
     take on their way in: recipients may be addresses or address-book aliases (a
     lone string is one recipient), and attachments are paths. `compose_message`
     resolves those into the addresses and `Attachment`s a `Message` holds -- what
@@ -224,7 +224,7 @@ def compose_message(mail: Mail, *, address_book: AddressBook) -> Message:
 
     Expands address-book aliases and turns attachment paths into `Attachment`s,
     then hands the resolved parts to `Message.compose`. This is the single place
-    the loose request becomes the strict content core, so `send_mail` and
+    the loose request becomes the strict content core, so `send` and
     `send_bulk` compose a message identically.
 
     Raises

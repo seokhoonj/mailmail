@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pytest
 
-SKILL = Path(__file__).parent.parent / "skills" / "send-mail" / "SKILL.md"
+SKILL = Path(__file__).parent.parent / "skills" / "send" / "SKILL.md"
 
 
 def frontmatter_text() -> str:
@@ -59,7 +59,7 @@ class TestFrontmatterIsRealYaml:
 
     def test_it_has_a_name_and_a_description(self):
         parsed = frontmatter()
-        assert parsed["name"] == "send-mail"
+        assert parsed["name"] == "send"
         assert parsed["description"]
 
     def test_the_description_survives_its_own_colons(self):

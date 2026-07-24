@@ -32,9 +32,9 @@ book so you can call the people you write often by name.
 ### Quick start
 
 ```python
-from mailmail import send_mail
+from mailmail import send
 
-send_mail(
+send(
     to          = "someone@example.com",
     subject     = "Weekly report",
     body        = "Please find the report attached.",
@@ -205,9 +205,9 @@ for name in ('naver',):  # ('naver', 'gmail') if you stored Gmail too
 ### 4. Send mail
 
 ```python
-from mailmail import send_mail
+from mailmail import send
 
-send_mail(
+send(
     to      = "someone@example.com",
     subject = "Weekly report",
     body    = "Please find the report attached.",
@@ -218,9 +218,9 @@ If you registered a name in the address book, you can call it. You can mix names
 addresses.
 
 ```python
-send_mail(to="lead", subject="Weekly report", body="Please review.")
-send_mail(to=["lead", "someone@example.com"], subject="Weekly report", body="...")
-send_mail(to="team", subject="Weekly report", body="...")  # the group expands
+send(to="lead", subject="Weekly report", body="Please review.")
+send(to=["lead", "someone@example.com"], subject="Weekly report", body="...")
+send(to="team", subject="Weekly report", body="...")  # the group expands
 ```
 
 The body goes out exactly as written, so line breaks survive. A triple-quoted
@@ -236,13 +236,13 @@ the detail is on the second sheet.
 Best regards,
 """
 
-send_mail(to="lead", subject="Weekly report", body=body, attachments=["report.xlsx"])
+send(to="lead", subject="Weekly report", body=body, attachments=["report.xlsx"])
 ```
 
 With an account, attachments, cc, and HTML:
 
 ```python
-receipt = send_mail(
+receipt = send(
     account     = "gmail",  # default_account if omitted
     to          = "lead",
     cc          = "team",
@@ -288,7 +288,7 @@ for receipt in receipts:
         print(receipt.reason_by_refused_recipient)
 ```
 
-`Mail` is the same vocabulary as `send_mail` — `to`/`cc`/`bcc` take addresses or
+`Mail` is the same vocabulary as `send` — `to`/`cc`/`bcc` take addresses or
 address-book names, and `attachments` are paths. Personalise (name, figures,
 attachment) by building each `Mail` differently.
 
@@ -392,13 +392,13 @@ the place Claude looks:
 
 ```sh
 git clone https://github.com/seokhoonj/mailmail.git
-ln -s "$PWD/mailmail/skills/send-mail" ~/.claude/skills/send-mail  # macOS, Linux
+ln -s "$PWD/mailmail/skills/send" ~/.claude/skills/send  # macOS, Linux
 ```
 
 ```powershell
 git clone https://github.com/seokhoonj/mailmail.git
-New-Item -ItemType SymbolicLink -Path "$HOME\.claude\skills\send-mail" `
-         -Target "$PWD\mailmail\skills\send-mail"  # Windows (PowerShell)
+New-Item -ItemType SymbolicLink -Path "$HOME\.claude\skills\send" `
+         -Target "$PWD\mailmail\skills\send"  # Windows (PowerShell)
 ```
 
 After that, just say it in Claude Code:
@@ -461,9 +461,9 @@ NAVER·Gmail 계정으로 메일을 보내는 파이썬 패키지. 첨부파일,
 ### 빠른 시작
 
 ```python
-from mailmail import send_mail
+from mailmail import send
 
-send_mail(
+send(
     to          = "someone@example.com",
     subject     = "주간 보고",
     body        = "첨부 확인 부탁드립니다.",
@@ -623,9 +623,9 @@ for name in ('naver',):  # Gmail도 저장했으면 ('naver', 'gmail')
 ### 4. 메일 보내기
 
 ```python
-from mailmail import send_mail
+from mailmail import send
 
-send_mail(
+send(
     to      = "someone@example.com",
     subject = "주간 보고",
     body    = "첨부 확인 부탁드립니다.",
@@ -635,9 +635,9 @@ send_mail(
 주소록에 등록했으면 이름으로 부를 수 있다. 주소와 섞어도 된다.
 
 ```python
-send_mail(to="lead", subject="주간 보고", body="확인 부탁드립니다.")
-send_mail(to=["lead", "someone@example.com"], subject="주간 보고", body="...")
-send_mail(to="team", subject="주간 보고", body="...")  # 묶음은 펼쳐진다
+send(to="lead", subject="주간 보고", body="확인 부탁드립니다.")
+send(to=["lead", "someone@example.com"], subject="주간 보고", body="...")
+send(to="team", subject="주간 보고", body="...")  # 묶음은 펼쳐진다
 ```
 
 본문은 적은 그대로 나가므로 줄바꿈이 그대로 산다. 긴 본문은 따옴표 세 개가 편하다.
@@ -652,13 +652,13 @@ body = """\
 감사합니다.
 """
 
-send_mail(to="lead", subject="주간 보고", body=body, attachments=["report.xlsx"])
+send(to="lead", subject="주간 보고", body=body, attachments=["report.xlsx"])
 ```
 
 계정 지정, 첨부, 참조, HTML까지 쓰면:
 
 ```python
-receipt = send_mail(
+receipt = send(
     account     = "gmail",  # 안 적으면 default_account
     to          = "lead",
     cc          = "team",
@@ -702,7 +702,7 @@ for receipt in receipts:
         print(receipt.reason_by_refused_recipient)
 ```
 
-`Mail`은 `send_mail`과 같은 어휘다 — `to`·`cc`·`bcc`에 주소나 주소록 이름을 섞어 쓰고,
+`Mail`은 `send`과 같은 어휘다 — `to`·`cc`·`bcc`에 주소나 주소록 이름을 섞어 쓰고,
 `attachments`는 경로다. 개인화(이름·수치·첨부)는 통마다 `Mail`을 다르게 만들면 된다.
 
 몇 가지 알아둘 것:
@@ -796,13 +796,13 @@ mailmail set-password --account naver  # 앱 비밀번호 저장(프롬프트로
 
 ```sh
 git clone https://github.com/seokhoonj/mailmail.git
-ln -s "$PWD/mailmail/skills/send-mail" ~/.claude/skills/send-mail  # macOS, Linux
+ln -s "$PWD/mailmail/skills/send" ~/.claude/skills/send  # macOS, Linux
 ```
 
 ```powershell
 git clone https://github.com/seokhoonj/mailmail.git
-New-Item -ItemType SymbolicLink -Path "$HOME\.claude\skills\send-mail" `
-         -Target "$PWD\mailmail\skills\send-mail"  # Windows (PowerShell)
+New-Item -ItemType SymbolicLink -Path "$HOME\.claude\skills\send" `
+         -Target "$PWD\mailmail\skills\send"  # Windows (PowerShell)
 ```
 
 그 다음부터는 Claude Code에서 그냥 말하면 된다.

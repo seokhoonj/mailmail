@@ -1,8 +1,8 @@
 """Send mail from Python through Gmail or Naver SMTP.
 
-    from mailmail import send_mail
+    from mailmail import send
 
-    send_mail(
+    send(
         to          = "lead",
         subject     = "Weekly report",
         body        = "Hi,\\n\\nThis week's report is attached.\\n\\nBest regards,\\n",
@@ -102,15 +102,15 @@ __all__ = [
     "load_config",
     "resolve_password",
     "resolve_recipients",
+    "send",
     "send_bulk",
-    "send_mail",
     "store_password",
 ]
 
 __version__ = "0.1.0"
 
 
-def send_mail(
+def send(
     *,
     subject: str,
     body: str,
@@ -217,7 +217,7 @@ def send_bulk(
     mails
         One `Mail` per message, held as a sequence so the returned receipts can
         be paired back with it by position. Recipients may be addresses or
-        aliases and attachments are paths, exactly as `send_mail` takes them.
+        aliases and attachments are paths, exactly as `send` takes them.
     account
         Which configured mailbox to send as. Defaults to `default_account`.
     config

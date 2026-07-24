@@ -40,7 +40,7 @@ class TestTheModuleDocstringDescribesTodaysApi:
 
     def test_the_signature_agrees(self):
         """The claim above is only worth making if the code still enforces it."""
-        parameter = inspect.signature(mailmail.send_mail).parameters["to"]
+        parameter = inspect.signature(mailmail.send).parameters["to"]
         assert parameter.default is inspect.Parameter.empty
 
 
@@ -66,10 +66,10 @@ class TestTheErrorsModuleIsHonestAboutItsReach:
 
 # The two functions a caller actually reaches for. Every claim below is asked of
 # both, because the first cut of this file asked only the places already fixed --
-# `check_attachments` and the errors module -- and passed while `send_mail`, the
+# `check_attachments` and the errors module -- and passed while `send`, the
 # most-read docstring in the package, still carried the promise the review had
 # just disproved. A gate drawn around the repair is not a gate.
-PUBLIC_SEND_APIS = [mailmail.send_mail, mailmail.Mailer.send]
+PUBLIC_SEND_APIS = [mailmail.send, mailmail.Mailer.send]
 
 
 class TestDocumentedRaisesMatchWhatIsRaised:

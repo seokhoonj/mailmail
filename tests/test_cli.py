@@ -130,7 +130,7 @@ class TestSendReportsFailureWithoutRaising:
     def test_a_missing_password_exits_one_and_prints_the_reason(
         self, config_file, fake_smtp, capsys
     ):
-        # No password stored: send_mail raises MissingPasswordError, which the
+        # No password stored: send raises MissingPasswordError, which the
         # CLI relays to stderr rather than letting it become a traceback.
         code = main(["send", "--to", "me", "--subject", "s", "--body", "b"])
         assert code == 1

@@ -1,9 +1,9 @@
 ---
-name: send-mail
-description: "Send a result, report, or file from the conversation as email. Holds no logic of its own -- it calls the mailmail package's send_mail(), and always shows the recipients, subject, and attachments for approval before sending. Trigger phrases: send mail, email this, mail this, send this by email, email the report, 메일 보내줘, 메일로 보내, 메일 발송, 이거 메일로, 부장님께 보내줘, 상무님께 보내줘."
+name: send
+description: "Send a result, report, or file from the conversation as email. Holds no logic of its own -- it calls the mailmail package's send(), and always shows the recipients, subject, and attachments for approval before sending. Trigger phrases: send mail, email this, mail this, send this by email, email the report, 메일 보내줘, 메일로 보내, 메일 발송, 이거 메일로, 부장님께 보내줘, 상무님께 보내줘."
 ---
 
-# send-mail — send a conversation result as email
+# send — send a conversation result as email
 
 Sending mail is an **irreversible external transmission**. A wrong mail cannot be
 recalled, and an attachment sent to the wrong person stays there forever. So half
@@ -15,7 +15,7 @@ It holds no logic. MIME assembly, the blocked-extension check, size calculation,
 alias resolution — **the mailmail package does all of it.** Do not reimplement any
 of that here, do not copy the blocked list into this file, do not check extensions
 yourself. That would put one fact in two homes, and the two always drift. This
-skill only assembles one `send_mail(...)` call and runs it.
+skill only assembles one `send(...)` call and runs it.
 
 ## Where to find the package
 
@@ -27,7 +27,7 @@ reuse that value.
 ```sh
 python3 -c "
 import os, pathlib
-skill = pathlib.Path(os.path.realpath(os.path.expanduser('~/.claude/skills/send-mail')))
+skill = pathlib.Path(os.path.realpath(os.path.expanduser('~/.claude/skills/send')))
 venv  = skill.parents[1] / '.venv' / ('Scripts' if os.name == 'nt' else 'bin') / 'python'
 print(venv if venv.exists() else 'NOT FOUND')
 "
@@ -138,9 +138,9 @@ non-ASCII text, so write it to a file rather than passing it as a shell argument
 
 ```python
 # <scratchpad>/send.py
-from mailmail import send_mail
+from mailmail import send
 
-receipt = send_mail(
+receipt = send(
     account     = "naver",
     to          = ["lead", "reviewer"],   # aliases from the address book (read in step 1)
     subject     = "Weekly report",

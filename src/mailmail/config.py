@@ -52,7 +52,7 @@ class Config:
     Attributes
     ----------
     default_account
-        Name of the account `send_mail` uses when the caller names none.
+        Name of the account `send` uses when the caller names none.
     account_by_name
         Every configured mailbox.
     address_book
@@ -143,7 +143,7 @@ def _as_config(document: dict[str, Any], *, path: Path) -> Config:
             known = ", ".join(sorted(account_by_name))
             raise ConfigError(
                 f"{path} has several accounts ({known}) but no default_account; "
-                f"name the one send_mail should use by default"
+                f"name the one send should use by default"
             )
         default_account = next(iter(account_by_name))
     if default_account not in account_by_name:
@@ -158,7 +158,7 @@ def _as_config(document: dict[str, Any], *, path: Path) -> Config:
             f"Default recipients fired on omission, so a configured cc rode "
             f"along on every message that did not mention one -- including the "
             f"note meant for one person. Name recipients on the call instead "
-            f"(`send_mail(to=..., cc=...)`) and delete the table."
+            f"(`send(to=..., cc=...)`) and delete the table."
         )
     return Config(
         default_account = default_account,
