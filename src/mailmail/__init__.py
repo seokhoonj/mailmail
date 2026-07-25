@@ -109,7 +109,7 @@ __all__ = [
     "store_password",
 ]
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 
 def send(
