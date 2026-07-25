@@ -236,9 +236,9 @@ class Mail:
         # Message does, keeping a lone recipient string as the one-recipient
         # shorthand rather than a tuple of its characters.
         for field_name in ("to", "cc", "bcc"):
-            value = getattr(self, field_name)
-            if not isinstance(value, str):
-                object.__setattr__(self, field_name, tuple(value))
+            recipient_field = getattr(self, field_name)
+            if not isinstance(recipient_field, str):
+                object.__setattr__(self, field_name, tuple(recipient_field))
         object.__setattr__(self, "attachments", tuple(self.attachments))
 
 
@@ -272,7 +272,7 @@ def compose_message(mail: Mail, *, address_book: AddressBook) -> Message:
     )
 
 
-def _refuse_bare_string(field_name: str, value: object) -> None:
+def _refuse_bare_string(field_name: str, field_value: object) -> None:
     """Reject a lone string where a tuple of addresses belongs.
 
     A `str` is itself an iterable of characters, so `to="a@b.com"` would be
@@ -282,19 +282,19 @@ def _refuse_bare_string(field_name: str, value: object) -> None:
     not a thing to leave to whether someone ran mypy. The constructor is strict
     on purpose; the string shorthand lives on `Message.compose`.
     """
-    if isinstance(value, str):
+    if isinstance(field_value, str):
         raise InvalidMessageError(
             f"{field_name} takes a tuple of addresses, not a bare string: "
-            f"{field_name}={value!r} would send one message per character. "
-            f"Write {field_name}=({value!r},), or use "
-            f"Message.compose({field_name}={value!r}, ...)"
+            f"{field_name}={field_value!r} would send one message per character. "
+            f"Write {field_name}=({field_value!r},), or use "
+            f"Message.compose({field_name}={field_value!r}, ...)"
         )
 
 
-def _as_address_tuple(value: str | Iterable[str]) -> tuple[str, ...]:
-    if isinstance(value, str):
-        return (value,)
-    return tuple(value)
+def _as_address_tuple(addresses: str | Iterable[str]) -> tuple[str, ...]:
+    if isinstance(addresses, str):
+        return (addresses,)
+    return tuple(addresses)
 
 
 def _domain_of(address: str) -> str:

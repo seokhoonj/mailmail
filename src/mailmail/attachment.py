@@ -269,42 +269,42 @@ def screen_attachments(
 
 
 def _check_one_attachment(attachment: Attachment, *, provider: MailProvider) -> None:
-    blocked = _blocked_names_in(attachment.path, provider.blocked_extensions)
-    if blocked:
+    blocked_names = _blocked_names_in(attachment.path, provider.blocked_extensions)
+    if blocked_names:
         raise BlockedAttachmentError(
-            f"{provider.name} blocks {_describe_blocked(attachment, blocked)}; "
+            f"{provider.name} blocks {_describe_blocked(attachment, blocked_names)}; "
             f"putting it in a .zip or .tar.gz does not help, because those are "
             f"looked inside. Share it through a file link instead."
         )
 
 
-def _describe_blocked(attachment: Attachment, blocked: Sequence[str]) -> str:
+def _describe_blocked(attachment: Attachment, blocked_names: Sequence[str]) -> str:
     """Name what is blocked: the file itself, or what it was found to contain.
 
-    `blocked` is normalised before the comparison rather than compared as it
+    `blocked_names` is normalised before the comparison rather than compared as it
     arrives. The signature says `Sequence`, and `("setup.exe",) == ["setup.exe"]`
     is False, so a tuple took the second branch and produced "setup.exe, which
     contains: setup.exe" -- telling the reader their file contains itself. It has
     never happened, because the only caller returns a list; the hint is what the
     next caller will read.
     """
-    if list(blocked) == [attachment.filename]:
+    if list(blocked_names) == [attachment.filename]:
         return f"{attachment.filename} ({attachment.path.suffix})"
-    inside = ", ".join(blocked)
+    inside = ", ".join(blocked_names)
     return f"{attachment.filename}, which contains: {inside}"
 
 
 def _blocked_names_in(path: Path, blocked_extensions: frozenset[str]) -> list[str]:
     """Names at or inside `path` whose suffix the provider blocks."""
-    blocked = []
+    blocked_names = []
     if _is_blocked_name(path.name, blocked_extensions):
-        blocked.append(path.name)
-    blocked.extend(
+        blocked_names.append(path.name)
+    blocked_names.extend(
         name
         for name in _archive_member_names(path, path.name)
         if _is_blocked_name(name, blocked_extensions)
     )
-    return blocked
+    return blocked_names
 
 
 def _is_blocked_name(name: str, blocked_extensions: frozenset[str]) -> bool:

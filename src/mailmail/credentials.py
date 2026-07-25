@@ -227,7 +227,7 @@ def _load_password_by_username(path: Path) -> dict[str, str]:
     if not path.exists():
         return {}
     try:
-        stored = json.loads(path.read_text(encoding="utf-8"))
+        password_by_username = json.loads(path.read_text(encoding="utf-8"))
     except OSError as err:
         raise CredentialsError(f"{path} cannot be read: {err}") from err
     except UnicodeDecodeError as err:
@@ -236,13 +236,13 @@ def _load_password_by_username(path: Path) -> dict[str, str]:
         raise CredentialsError(f"{path} is not valid UTF-8: {err}") from err
     except json.JSONDecodeError as err:
         raise CredentialsError(f"{path} is not valid JSON: {err}") from err
-    if not isinstance(stored, dict) or not all(
-        isinstance(value, str) for value in stored.values()
+    if not isinstance(password_by_username, dict) or not all(
+        isinstance(password, str) for password in password_by_username.values()
     ):
         raise CredentialsError(
             f"{path} should map each email address to its password"
         )
-    return stored
+    return password_by_username
 
 
 def _write_password_by_username(
