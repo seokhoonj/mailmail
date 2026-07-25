@@ -187,7 +187,13 @@ class TestKoreanText:
         mime = _make_message().to_mime(sender="user@도메인.한국")
         message_id = mime["Message-ID"]
         assert message_id.isascii()
-        assert "xn--" in message_id
+        assert message_id.endswith("@xn--hq1bm8jm9l.xn--3e0b707e>")
+
+    def test_an_idna_invalid_domain_falls_back_to_localhost(self):
+        # An empty label will not IDNA-encode; the msg-id stays ASCII via the
+        # localhost fallback rather than escaping as a bare error.
+        mime = _make_message().to_mime(sender="user@bad..domain")
+        assert mime["Message-ID"].endswith("@localhost>")
 
 
 class TestParts:

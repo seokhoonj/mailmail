@@ -85,9 +85,10 @@ class AttachmentError(MailmailError):
     """A file cannot be attached, or the provider would refuse it.
 
     Raised directly when the path is missing, is not a regular file, names an
-    unresolvable `~user`, has a name that is not valid UTF-8, or the MIME type is
-    malformed -- none of which a provider ever sees. It is also the base class for
-    the provider's own refusals below, so one `except` covers both kinds.
+    unresolvable `~user`, has a name that is not valid UTF-8 or contains a line
+    break, or the MIME type is malformed -- none of which a provider ever sees. It
+    is also the base class for the provider's own refusals below, so one `except`
+    covers both kinds.
     """
 
 

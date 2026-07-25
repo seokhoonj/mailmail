@@ -460,6 +460,18 @@ class TestUnreadableArchives:
         with pytest.raises(AttachmentError, match="not valid UTF-8"):
             Attachment.from_path(os.fsdecode(raw_path))
 
+    @pytest.mark.skipif(
+        os.name != "posix",
+        reason="only POSIX filesystems accept a line break in a filename",
+    )
+    def test_a_line_break_in_the_filename_is_an_attachment_error(self, tmp_path):
+        # The name becomes the Content-Disposition filename header; a line break
+        # would break or inject it. Refuse it, not a bare ValueError from to_mime.
+        raw_path = os.fsencode(tmp_path) + b"/foo\nBcc-inject.pdf"
+        os.close(os.open(raw_path, os.O_CREAT | os.O_WRONLY, 0o644))
+        with pytest.raises(AttachmentError, match="line break"):
+            Attachment.from_path(os.fsdecode(raw_path))
+
     def test_7z_is_not_looked_inside_and_does_not_pretend_to_be(self, tmp_path):
         # A documented limit, pinned so nobody mistakes silence for protection:
         # there is no stdlib reader for .7z, so an executable inside one reaches

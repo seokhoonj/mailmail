@@ -134,7 +134,8 @@ class Attachment:
         ------
         AttachmentError
             If the path does not exist, is not a regular file, names an
-            unresolvable `~user`, or has a name that is not valid UTF-8.
+            unresolvable `~user`, or has a name that is not valid UTF-8 or
+            contains a line break.
         """
         try:
             path = Path(path).expanduser()
@@ -157,6 +158,15 @@ class Attachment:
                 f"attachment name is not valid UTF-8, so it cannot go in a mail "
                 f"header: {path.name!r}; rename the file before attaching it"
             ) from err
+        if "\r" in path.name or "\n" in path.name:
+            # The name becomes the Content-Disposition filename; a line break would
+            # break -- or inject -- that header (the same class the subject and
+            # address guards close). email raises a bare ValueError at assembly;
+            # refuse it here as an AttachmentError.
+            raise AttachmentError(
+                f"a line break in the attachment name is not something any mail "
+                f"header will take: {path.name!r}; rename the file before attaching it"
+            )
         guessed, _encoding = mimetypes.guess_type(path.name)
         return cls(
             path       = path,
