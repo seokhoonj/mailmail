@@ -26,7 +26,7 @@ from mailmail.provider import GMAIL, NAVER
 NAVER_ACCOUNT = SmtpAccount(name="naver", username="me@naver.com", provider=NAVER)
 GMAIL_ACCOUNT = SmtpAccount(name="gmail", username="me@gmail.com", provider=GMAIL)
 
-posix_only = pytest.mark.skipif(
+POSIX_ONLY = pytest.mark.skipif(
     os.name != "posix", reason="the file mode is only real on POSIX"
 )
 
@@ -36,7 +36,8 @@ def credentials_path(tmp_path, monkeypatch):
     """Point the store at a throwaway file, never the operator's real one."""
     path = tmp_path / "credentials.json"
     monkeypatch.setenv("MAILMAIL_CREDENTIALS", str(path))
-    monkeypatch.delenv("MAILMAIL_PASSWORD", raising=False)
+    for key in [k for k in os.environ if k.startswith("MAILMAIL_PASSWORD")]:
+        monkeypatch.delenv(key, raising=False)
     return path
 
 
@@ -106,9 +107,9 @@ class TestStoreAndResolve:
         self, credentials_path
     ):
         # The reason this store is JSON: hand-rolled TOML escaping mangles these.
-        awkward = 'quote" backslash\\ brace} 한글 \n newline'
-        store_password(NAVER_ACCOUNT, awkward)
-        assert resolve_password(NAVER_ACCOUNT) == awkward
+        awkward_password = 'quote" backslash\\ brace} 한글 \n newline'
+        store_password(NAVER_ACCOUNT, awkward_password)
+        assert resolve_password(NAVER_ACCOUNT) == awkward_password
 
     def test_missing_password_names_the_account_and_the_file(self, credentials_path):
         with pytest.raises(MissingPasswordError) as caught:
@@ -137,7 +138,7 @@ class TestEnvironmentOverride:
         assert not credentials_path.exists()
 
 
-@posix_only
+@POSIX_ONLY
 class TestFilePermissions:
     def test_new_file_is_owner_only_from_the_moment_it_exists(self, credentials_path):
         store_password(NAVER_ACCOUNT, "app-password")
@@ -190,7 +191,7 @@ class TestFilePermissions:
         assert _mode_of(credentials_path) == CREDENTIALS_FILE_MODE
 
 
-@posix_only  # the setup chmods; only the value of `os.name` is being faked
+@POSIX_ONLY  # the setup chmods; only the value of `os.name` is being faked
 class TestWhereTheFileModeIsNotReal:
     """Windows reports a mode that no chmod ever set, and the check believed it.
 
@@ -217,8 +218,8 @@ class TestWhereTheFileModeIsNotReal:
         store_password(NAVER_ACCOUNT, "app-password")
         credentials_path.chmod(0o644)  # 0o666 is what Windows would report here
         monkeypatch.setattr(os, "name", "nt")
-        got = resolve_password(NAVER_ACCOUNT, path=credentials_path)
-        assert got == "app-password"
+        actual_password = resolve_password(NAVER_ACCOUNT, path=credentials_path)
+        assert actual_password == "app-password"
 
     def test_posix_still_refuses_that_same_file(self, credentials_path, monkeypatch):
         # Guards the guard: the skip has to be about the platform. If the check
@@ -366,11 +367,13 @@ class TestDefaultLocation:
         with pytest.raises(CredentialsError, match="names no home directory"):
             default_credentials_path()
 
-    def test_a_tilde_in_the_override_is_expanded(self, monkeypatch):
-        # Positive counterpart: a valid `~/x` override expands under home.
+    def test_a_tilde_in_the_override_is_expanded(self, tmp_path, monkeypatch):
+        # Positive counterpart: a valid `~/x` override expands under home. HOME is
+        # isolated so the assertion does not depend on the real home directory.
+        monkeypatch.setenv("HOME", str(tmp_path))
         monkeypatch.setenv("MAILMAIL_CREDENTIALS", "~/mail/credentials.json")
         assert default_credentials_path() == (
-            Path.home() / "mail" / "credentials.json"
+            tmp_path / "mail" / "credentials.json"
         )
 
     def test_home_resolution_failure_stays_inside_the_mailmail_error_surface(

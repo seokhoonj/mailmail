@@ -54,9 +54,10 @@ class Message:
     Raises
     ------
     InvalidMessageError
-        A recipient field is a bare string, no recipient was given at all, the
-        subject is blank, or an address contains a line break. Also a
-        `ValueError`.
+        A recipient field is a bare string; no recipient was given at all; the
+        subject is blank; the subject or an address contains a line break; or the
+        body or HTML carries a character no server can send (an unpaired
+        surrogate). Also a `ValueError`.
     """
 
     subject: str
@@ -120,6 +121,19 @@ class Message:
                 f"a line break in the subject is not something any server will "
                 f"take: {self.subject!r}"
             )
+        for field_name, text in (("body", self.body), ("html", self.html)):
+            if text is None:
+                continue
+            try:
+                text.encode("utf-8")
+            except UnicodeEncodeError as err:
+                # A lone surrogate (from os.fsdecode / a surrogateescape decode) is
+                # not encodable to any charset; set_content / add_alternative would
+                # raise a bare UnicodeEncodeError at flatten, outside send()'s catch.
+                raise InvalidMessageError(
+                    f"the {field_name} carries a character no mail server can send "
+                    f"(an unpaired surrogate): {err}"
+                ) from err
         for address in self.recipients:
             if "\r" in address or "\n" in address:
                 # to and cc get this for free when they are written as headers,
@@ -241,10 +255,11 @@ def compose_message(mail: Mail, *, address_book: AddressBook) -> Message:
     UnknownContactError, ContactCycleError
         A recipient is neither an address nor a resolvable alias.
     AttachmentError
-        An attachment path is missing or is not a regular file.
+        An attachment path is missing, is not a regular file, or has a name that
+        is not valid UTF-8.
     InvalidMessageError
-        The result has no recipient, a blank subject, or an address with a line
-        break.
+        The result has no recipient, a blank subject, a line break in the subject
+        or an address, or an unsendable body/HTML.
     """
     return Message.compose(
         subject     = mail.subject,

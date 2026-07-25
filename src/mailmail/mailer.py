@@ -134,6 +134,9 @@ class Mailer:
         MissingPasswordError, InsecureCredentialsError, CredentialsError
             No password is stored, the credentials file is readable by others, or
             it is not readable JSON.
+        ConfigError
+            No home directory can be found for the default credentials location;
+            see `resolve_password`.
         AuthenticationFailedError
             The server rejected the password. Note this is a `MailmailError`, not
             an `smtplib.SMTPException` -- authentication is the one session

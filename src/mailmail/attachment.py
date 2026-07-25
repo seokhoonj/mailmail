@@ -57,7 +57,7 @@ _ZIP_ENCRYPTED_FLAG = 0x1
 # `NotImplementedError`. `tarfile.CompressionError` covers a `.tbz`/`.txz` on a
 # Python built without bz2/lzma. Each of those used to escape the package
 # untranslated, past a docstring promising they could not.
-_UNREADABLE_MEMBER = (
+_UNREADABLE_MEMBER_ERRORS = (
     zipfile.BadZipFile,
     tarfile.ReadError,
     tarfile.CompressionError,
@@ -133,8 +133,8 @@ class Attachment:
         Raises
         ------
         AttachmentError
-            If the path does not exist, is not a regular file, or names an
-            unresolvable `~user`.
+            If the path does not exist, is not a regular file, names an
+            unresolvable `~user`, or has a name that is not valid UTF-8.
         """
         try:
             path = Path(path).expanduser()
@@ -146,6 +146,17 @@ class Attachment:
             raise AttachmentError(f"attachment not found: {path}")
         if not path.is_file():
             raise AttachmentError(f"attachment is not a regular file: {path}")
+        try:
+            path.name.encode("utf-8")
+        except UnicodeEncodeError as err:
+            # A filename with a non-UTF-8 byte (routine on Linux) decodes to a lone
+            # surrogate that no MIME-header charset can carry; left alone it raises a
+            # bare UnicodeEncodeError deep in to_mime, outside send()'s catch. Refuse
+            # it here, at the boundary, as an AttachmentError.
+            raise AttachmentError(
+                f"attachment name is not valid UTF-8, so it cannot go in a mail "
+                f"header: {path.name!r}; rename the file before attaching it"
+            ) from err
         guessed, _encoding = mimetypes.guess_type(path.name)
         return cls(
             path       = path,
@@ -401,7 +412,7 @@ def _zip_member_names(
                     yield from _nested_member_names(
                         nested, member.filename, outer=name, depth=depth
                     )
-            except _UNREADABLE_MEMBER as err:
+            except _UNREADABLE_MEMBER_ERRORS as err:
                 raise UnscannableArchiveError(
                     f"{member.filename} inside {name} cannot be read to the end "
                     f"({err}); what cannot be scanned must not pass as what "
@@ -435,7 +446,7 @@ def _tar_member_names(
         # came back as "nothing blocked", with the name plainly in the bytes.
         try:
             members = archive.getmembers()
-        except _UNREADABLE_MEMBER as err:
+        except _UNREADABLE_MEMBER_ERRORS as err:
             raise UnscannableArchiveError(
                 f"{name} stops before its last member ({err}); an archive that "
                 f"cannot be read to the end must not pass as one that holds "
@@ -458,7 +469,7 @@ def _tar_member_names(
                 yield from _nested_member_names(
                     nested, member.name, outer=name, depth=depth
                 )
-            except _UNREADABLE_MEMBER as err:
+            except _UNREADABLE_MEMBER_ERRORS as err:
                 raise UnscannableArchiveError(
                     f"{member.name} inside {name} cannot be read to the end "
                     f"({err}); what cannot be scanned must not pass as what "

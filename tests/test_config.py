@@ -220,11 +220,13 @@ class TestDefaultLocation:
         monkeypatch.setenv("XDG_CONFIG_HOME", "/elsewhere/config")
         assert str(default_config_path()) == "/tmp/other.toml"
 
-    def test_a_tilde_in_the_override_is_expanded(self, monkeypatch):
+    def test_a_tilde_in_the_override_is_expanded(self, tmp_path, monkeypatch):
         # The positive counterpart to the unresolvable-`~user` error case: a valid
-        # `~/x` in the override expands to an absolute path under home.
+        # `~/x` in the override expands to an absolute path under home. HOME is
+        # isolated so the assertion does not depend on the real home directory.
+        monkeypatch.setenv("HOME", str(tmp_path))
         monkeypatch.setenv("MAILMAIL_CONFIG", "~/mail/config.toml")
-        assert default_config_path() == Path.home() / "mail" / "config.toml"
+        assert default_config_path() == tmp_path / "mail" / "config.toml"
 
 
 class TestConfigDir:

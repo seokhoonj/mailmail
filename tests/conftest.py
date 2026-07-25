@@ -13,6 +13,7 @@ goes wrong partway through a handshake.
 """
 
 import email
+import os
 import smtplib
 from typing import NamedTuple
 
@@ -157,5 +158,8 @@ def fake_smtp(monkeypatch, tmp_path):
 
     monkeypatch.setattr("mailmail.mailer.smtplib.SMTP", fake_smtp_class)
     monkeypatch.setenv("MAILMAIL_CREDENTIALS", str(tmp_path / "credentials.json"))
-    monkeypatch.delenv("MAILMAIL_PASSWORD", raising=False)
+    # Clear the bare and every per-account password var, so the operator's real
+    # environment cannot leak a password into a test.
+    for key in [k for k in os.environ if k.startswith("MAILMAIL_PASSWORD")]:
+        monkeypatch.delenv(key, raising=False)
     return server

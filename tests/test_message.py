@@ -114,6 +114,19 @@ class TestSubjectWithLineBreaks:
             _make_message(subject="Report\nBcc: attacker@example.net")
 
 
+class TestContentThatCannotBeEncoded:
+    """A lone surrogate (from an os.fsdecode / surrogateescape decode) is not
+    sendable; it dies here, not as a bare UnicodeEncodeError at flatten."""
+
+    def test_a_surrogate_in_the_body_is_refused(self):
+        with pytest.raises(InvalidMessageError, match="surrogate"):
+            _make_message(body="hi \udce9")
+
+    def test_a_surrogate_in_the_html_is_refused(self):
+        with pytest.raises(InvalidMessageError, match="surrogate"):
+            _make_message(body="hi", html="<p>\udce9</p>")
+
+
 class TestHeaders:
     def test_from_and_to_are_set_from_the_sender_and_recipients(self):
         mime = _make_message(to=["lead@example.com", "analyst@example.com"]).to_mime(

@@ -10,9 +10,18 @@ recipient and the configured cc rode along, including on the note meant for one
 person. `to` is required now, so nothing is ever addressed on anyone's behalf.
 """
 
+import io
+import tarfile
+
 import pytest
 
-from mailmail import Config, InvalidMessageError, SmtpAccount, send
+from mailmail import (
+    Config,
+    InvalidMessageError,
+    MailmailError,
+    SmtpAccount,
+    send,
+)
 from mailmail.credentials import store_password
 from mailmail.provider import NAVER
 
@@ -134,4 +143,46 @@ class TestAMessageWithNobodyToSendTo:
         """
         with pytest.raises(TypeError, match="to"):
             send(subject="s", body="b", config=_make_config())  # type: ignore[call-arg]
+        assert fake_smtp.sent_messages == []
+
+
+class TestGuardedInputsFailThroughSendAsAMailmailError:
+    """The release claim, exercised at the public entry point: a guarded input
+    fails as a MailmailError -- what send() documents its caller can catch -- and
+    nothing goes out over the wire."""
+
+    def test_a_subject_line_break_fails_the_send(self, fake_smtp):
+        with pytest.raises(MailmailError):
+            send(
+                to      = "me",
+                subject = "s\r\nBcc: attacker@example.com",
+                body    = "b",
+                config  = _make_config(),
+            )
+        assert fake_smtp.sent_messages == []
+
+    def test_a_surrogate_body_fails_the_send(self, fake_smtp):
+        with pytest.raises(MailmailError):
+            send(to="me", subject="s", body="hi \udce9", config=_make_config())
+        assert fake_smtp.sent_messages == []
+
+    def test_a_corrupt_archive_attachment_fails_the_send(self, fake_smtp, tmp_path):
+        buf = io.BytesIO()
+        with tarfile.open(fileobj=buf, mode="w:xz") as archive:
+            payload = b"A" * 500_000
+            info = tarfile.TarInfo("big.txt")
+            info.size = len(payload)
+            archive.addfile(info, io.BytesIO(payload))
+        raw = bytearray(buf.getvalue())
+        raw[-30] ^= 0xFF
+        path = tmp_path / "archive.tar.xz"
+        path.write_bytes(raw)
+        with pytest.raises(MailmailError):
+            send(
+                to          = "me",
+                subject     = "s",
+                body        = "b",
+                attachments = [path],
+                config      = _make_config(),
+            )
         assert fake_smtp.sent_messages == []

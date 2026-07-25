@@ -162,19 +162,20 @@ def send(
     UnknownContactError, ContactCycleError
         A recipient is neither an address nor a resolvable alias.
     InvalidMessageError
-        Every recipient resolved to nobody, the subject is blank, or an address
-        contains a line break. Also a `ValueError`.
+        Every recipient resolved to nobody; the subject is blank; the subject or
+        an address contains a line break; or the body or HTML carries a character
+        no server can send (an unpaired surrogate). Also a `ValueError`.
     AttachmentError
-        An attachment path does not exist, is not a regular file, or names an
-        unresolvable `~user`.
+        An attachment path does not exist, is not a regular file, names an
+        unresolvable `~user`, or has a name that is not valid UTF-8.
     BlockedAttachmentError, UnscannableArchiveError, EncryptedArchiveError
         The provider would reject the attachment -- a blocked file type, or an
         archive that cannot be scanned to the bottom. Nothing was sent.
     MessageTooLargeError
         The message is over the server's limit; nothing was sent.
-    MissingPasswordError, InsecureCredentialsError
-        No password is stored for the account, or the credentials file is
-        readable by someone other than its owner.
+    MissingPasswordError, InsecureCredentialsError, CredentialsError
+        No password is stored for the account, the credentials file is readable
+        by someone other than its owner, or it is not readable JSON.
     AuthenticationFailedError
         The server rejected the password; the message says what it wants instead.
     RecipientRefusedError
@@ -242,12 +243,24 @@ def send_bulk(
     ConfigError, UnknownAccountError
         The configuration is missing or does not define the account.
     UnknownContactError, ContactCycleError, InvalidMessageError
-        A row's recipient is not resolvable, or a row has no recipient or a
-        blank subject.
+        A row's recipient is not resolvable, or a row has no recipient, a blank
+        subject, a line break in the subject, or an unsendable body/HTML.
+    AttachmentError
+        A row's attachment path does not exist, is not a regular file, names an
+        unresolvable `~user`, or has a name that is not valid UTF-8.
     BlockedAttachmentError, UnscannableArchiveError, EncryptedArchiveError
         A row's attachment would be rejected by the provider.
     MessageTooLargeError
         A row's attachments already exceed the size limit.
+
+    Then, when the connection opens -- before the first message goes out, so
+    still nothing is sent:
+
+    MissingPasswordError, InsecureCredentialsError, CredentialsError
+        No password is stored for the account, the credentials file is readable
+        by someone other than its owner, or it is not readable JSON.
+    AuthenticationFailedError
+        The server rejected the password.
 
     These can land mid-batch, after earlier messages have gone out -- the
     exception propagates, the receipts collected so far are lost, and what was

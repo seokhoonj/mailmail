@@ -1,6 +1,7 @@
 """Provider attachment rules are enforced locally, before anything is sent."""
 
 import io
+import os
 import re
 import tarfile
 import zipfile
@@ -419,16 +420,41 @@ class TestUnreadableArchives:
         # escape send()'s documented catch as a bare LZMAError.
         buf = io.BytesIO()
         with tarfile.open(fileobj=buf, mode="w:xz") as archive:
-            data = b"A" * 500_000
+            member_payload = b"A" * 500_000
             info = tarfile.TarInfo("big.txt")
-            info.size = len(data)
-            archive.addfile(info, io.BytesIO(data))
+            info.size = len(member_payload)
+            archive.addfile(info, io.BytesIO(member_payload))
         raw = bytearray(buf.getvalue())
         raw[-30] ^= 0xFF  # corrupt deep in the xz stream, past the open
         path = tmp_path / "archive.tar.xz"
         path.write_bytes(raw)
         with pytest.raises(UnscannableArchiveError):
             check_attachments([Attachment.from_path(path)], provider=GMAIL)
+
+    def test_a_corrupt_tar_gz_is_unscannable_not_a_bare_zlib_error(self, tmp_path):
+        # The gzip sibling of the .tar.xz case: a corrupt deflate stream raises
+        # zlib.error mid-scan, which must also surface as UnscannableArchiveError.
+        buf = io.BytesIO()
+        with tarfile.open(fileobj=buf, mode="w:gz") as archive:
+            member_payload = b"A" * 500_000
+            info = tarfile.TarInfo("big.txt")
+            info.size = len(member_payload)
+            archive.addfile(info, io.BytesIO(member_payload))
+        raw = bytearray(buf.getvalue())
+        raw[-30] ^= 0xFF  # corrupt deep in the deflate stream, past the open
+        path = tmp_path / "archive.tar.gz"
+        path.write_bytes(raw)
+        with pytest.raises(UnscannableArchiveError):
+            check_attachments([Attachment.from_path(path)], provider=GMAIL)
+
+    def test_a_non_utf8_filename_is_an_attachment_error(self, tmp_path):
+        # A file whose on-disk name is not valid UTF-8 (routine on Linux) cannot go
+        # in a mail header; refuse it as AttachmentError, not a bare UnicodeEncode
+        # Error escaping to_mime.
+        raw_path = os.fsencode(tmp_path) + b"/repor\xe9t.pdf"
+        os.close(os.open(raw_path, os.O_CREAT | os.O_WRONLY, 0o644))
+        with pytest.raises(AttachmentError, match="not valid UTF-8"):
+            Attachment.from_path(os.fsdecode(raw_path))
 
     def test_7z_is_not_looked_inside_and_does_not_pretend_to_be(self, tmp_path):
         # A documented limit, pinned so nobody mistakes silence for protection:
