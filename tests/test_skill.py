@@ -1,6 +1,6 @@
 """The skill file is a shipped artifact, so it gets checked like one.
 
-Its frontmatter is YAML, and it was not: an unquoted `Trigger phrases:` inside
+Its _frontmatter is YAML, and it was not: an unquoted `Trigger phrases:` inside
 the description made the second `: ` read as a nested mapping, and the whole
 block failed to parse. It shipped anyway, because the agent runtime's parser is
 lenient enough not to care -- GitHub's is not, and neither is any other tool that
@@ -8,7 +8,7 @@ might read it. A file that only parses in one reader is broken.
 
 Parsed with the standard library rather than PyYAML: the package has no runtime
 dependencies and the test suite has no reason to add one for a header of two
-keys. This reimplements only the sliver of YAML the frontmatter uses, and the
+keys. This reimplements only the sliver of YAML the _frontmatter uses, and the
 strictness is the point -- it must reject exactly what a real parser rejects.
 """
 
@@ -20,23 +20,23 @@ import pytest
 SKILL = Path(__file__).parent.parent / "skills" / "send" / "SKILL.md"
 
 
-def frontmatter_text() -> str:
+def _frontmatter_text() -> str:
     """The block between the opening and closing `---`."""
     text = SKILL.read_text(encoding="utf-8")
-    assert text.startswith("---\n"), "the file must open with a frontmatter fence"
+    assert text.startswith("---\n"), "the file must open with a _frontmatter fence"
     _open, block, _rest = text.split("---", 2)[0], *text.split("---", 2)[1:]
     return block
 
 
-def frontmatter() -> dict[str, str]:
-    """The frontmatter's keys, refusing anything a YAML parser would refuse.
+def _frontmatter() -> dict[str, str]:
+    """The _frontmatter's keys, refusing anything a YAML parser would refuse.
 
     Only `key: value` lines with a quoted-or-colonless value are accepted, which
     is the whole grammar this header needs and exactly the rule the broken
     version violated.
     """
     parsed: dict[str, str] = {}
-    for line in frontmatter_text().strip().splitlines():
+    for line in _frontmatter_text().strip().splitlines():
         if not line.strip():
             continue
         match = re.fullmatch(r'([a-z-]+):\s*(".*"|[^"].*)', line)
@@ -55,16 +55,16 @@ def frontmatter() -> dict[str, str]:
 
 class TestFrontmatterIsRealYaml:
     def test_it_parses(self):
-        assert frontmatter()
+        assert _frontmatter()
 
     def test_it_has_a_name_and_a_description(self):
-        parsed = frontmatter()
+        parsed = _frontmatter()
         assert parsed["name"] == "send"
         assert parsed["description"]
 
     def test_the_description_survives_its_own_colons(self):
         # "Trigger phrases:" is the exact thing that broke it.
-        assert "Trigger phrases:" in frontmatter()["description"]
+        assert "Trigger phrases:" in _frontmatter()["description"]
 
     def test_a_value_with_an_unquoted_colon_would_be_caught(self, tmp_path):
         # Guards the guard: if this check cannot fail, it is not checking.

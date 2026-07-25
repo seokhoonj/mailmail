@@ -38,7 +38,7 @@ def _password_on_file(fake_smtp):
     store_password(ACCOUNT, "app-pw")
 
 
-def make_config(**overrides):
+def _make_config(**overrides):
     fields = {
         "default_account": "naver",
         "account_by_name": {"naver": ACCOUNT},
@@ -47,7 +47,7 @@ def make_config(**overrides):
     return Config(**(fields | overrides))
 
 
-def make_mail(**overrides):
+def _make_mail(**overrides):
     fields = {"subject": "s", "body": "b", "to": "someone@example.com"}
     return Mail(**(fields | overrides))
 
@@ -73,18 +73,18 @@ class TestOneConnectionForTheWholeBatch:
     def test_many_mails_share_one_login(self, fake_smtp):
         send_bulk(
             [
-                make_mail(to="a@example.com"),
-                make_mail(to="b@example.com"),
-                make_mail(to="c@example.com"),
+                _make_mail(to="a@example.com"),
+                _make_mail(to="b@example.com"),
+                _make_mail(to="c@example.com"),
             ],
-            config = make_config(),
+            config = _make_config(),
         )
         assert len(fake_smtp.connections) == 1
         assert len(fake_smtp.logins) == 1
         assert len(fake_smtp.sent_messages) == 3
 
     def test_an_empty_batch_opens_no_connection(self, fake_smtp):
-        receipts = send_bulk([], config=make_config())
+        receipts = send_bulk([], config=_make_config())
         assert receipts == []
         assert fake_smtp.connections == []
 
@@ -92,8 +92,8 @@ class TestOneConnectionForTheWholeBatch:
 class TestAReceiptPerMailInTheOrderGiven:
     def test_one_receipt_per_mail_in_order(self, fake_smtp):
         receipts = send_bulk(
-            [make_mail(to="a@example.com"), make_mail(to="b@example.com")],
-            config = make_config(),
+            [_make_mail(to="a@example.com"), _make_mail(to="b@example.com")],
+            config = _make_config(),
         )
         assert [receipt.accepted for receipt in receipts] == [
             ("a@example.com",),
@@ -102,8 +102,8 @@ class TestAReceiptPerMailInTheOrderGiven:
 
     def test_each_mails_aliases_resolve_against_the_address_book(self, fake_smtp):
         receipts = send_bulk(
-            [make_mail(to="lead"), make_mail(to="team")],
-            config = make_config(),
+            [_make_mail(to="lead"), _make_mail(to="team")],
+            config = _make_config(),
         )
         assert receipts[0].accepted == ("lead@example.com",)
         assert receipts[1].accepted == ("lead@example.com", "reviewer@example.com")
@@ -111,10 +111,10 @@ class TestAReceiptPerMailInTheOrderGiven:
     def test_each_mail_carries_its_own_body(self, fake_smtp):
         send_bulk(
             [
-                make_mail(to="a@example.com", body="Hello A"),
-                make_mail(to="b@example.com", body="Hello B"),
+                _make_mail(to="a@example.com", body="Hello A"),
+                _make_mail(to="b@example.com", body="Hello B"),
             ],
-            config = make_config(),
+            config = _make_config(),
         )
         assert "Hello A" in fake_smtp.sent_messages[0].payload.decode()
         assert "Hello B" in fake_smtp.sent_messages[1].payload.decode()
@@ -125,11 +125,11 @@ class TestOneRefusedRecipientDoesNotSinkTheBatch:
         fake_smtp.refusals = {"b@example.com": (550, b"No such user")}
         receipts = send_bulk(
             [
-                make_mail(to="a@example.com"),
-                make_mail(to="b@example.com"),
-                make_mail(to="c@example.com"),
+                _make_mail(to="a@example.com"),
+                _make_mail(to="b@example.com"),
+                _make_mail(to="c@example.com"),
             ],
-            config = make_config(),
+            config = _make_config(),
         )
         assert receipts[0].is_complete
         assert receipts[2].is_complete
@@ -141,11 +141,11 @@ class TestOneRefusedRecipientDoesNotSinkTheBatch:
         fake_smtp.refusals = {"b@example.com": (550, b"No such user")}
         receipts = send_bulk(
             [
-                make_mail(to="a@example.com"),
-                make_mail(to="b@example.com"),
-                make_mail(to="c@example.com"),
+                _make_mail(to="a@example.com"),
+                _make_mail(to="b@example.com"),
+                _make_mail(to="c@example.com"),
             ],
-            config = make_config(),
+            config = _make_config(),
         )
         assert len(receipts) == 3
         assert len(fake_smtp.connections) == 1
@@ -153,8 +153,8 @@ class TestOneRefusedRecipientDoesNotSinkTheBatch:
     def test_a_partial_refusal_is_reported_on_the_row_it_hit(self, fake_smtp):
         fake_smtp.refusals = {"reviewer@example.com": (550, b"No such user")}
         receipts = send_bulk(
-            [make_mail(to="lead"), make_mail(to="team")],
-            config = make_config(),
+            [_make_mail(to="lead"), _make_mail(to="team")],
+            config = _make_config(),
         )
         assert receipts[0].is_complete
         assert not receipts[1].is_complete
@@ -168,28 +168,28 @@ class TestABadRowStopsTheBatchBeforeAnythingIsSent:
         installer = tmp_path / "setup.exe"
         installer.write_bytes(b"MZ")
         mails = [
-            make_mail(to="a@example.com"),
-            make_mail(to="b@example.com", attachments=[installer]),
-            make_mail(to="c@example.com"),
+            _make_mail(to="a@example.com"),
+            _make_mail(to="b@example.com", attachments=[installer]),
+            _make_mail(to="c@example.com"),
         ]
         with pytest.raises(BlockedAttachmentError):
-            send_bulk(mails, config=make_config())
+            send_bulk(mails, config=_make_config())
         assert fake_smtp.connections == []
         assert fake_smtp.sent_messages == []
 
     def test_an_unknown_alias_in_one_row_sends_nothing(self, fake_smtp):
-        mails = [make_mail(to="lead"), make_mail(to="nobody")]
+        mails = [_make_mail(to="lead"), _make_mail(to="nobody")]
         with pytest.raises(UnknownContactError):
-            send_bulk(mails, config=make_config())
+            send_bulk(mails, config=_make_config())
         assert fake_smtp.connections == []
 
     def test_a_blank_subject_in_one_row_sends_nothing(self, fake_smtp):
         mails = [
-            make_mail(to="a@example.com"),
-            make_mail(to="b@example.com", subject="  "),
+            _make_mail(to="a@example.com"),
+            _make_mail(to="b@example.com", subject="  "),
         ]
         with pytest.raises(InvalidMessageError):
-            send_bulk(mails, config=make_config())
+            send_bulk(mails, config=_make_config())
         assert fake_smtp.connections == []
 
 
@@ -205,10 +205,10 @@ class TestFailuresThatOnlyAppearMidBatch:
     def test_a_row_over_size_only_once_assembled_fails_after_prior_rows_sent(
         self, fake_smtp
     ):
-        config = make_config(account_by_name={"naver": SMALL_LIMIT_ACCOUNT})
+        config = _make_config(account_by_name={"naver": SMALL_LIMIT_ACCOUNT})
         mails = [
-            make_mail(to="a@example.com", body="small"),
-            make_mail(to="b@example.com", body="x" * 5000),
+            _make_mail(to="a@example.com", body="small"),
+            _make_mail(to="b@example.com", body="x" * 5000),
         ]
         with pytest.raises(MessageTooLargeError):
             send_bulk(mails, config=config)
@@ -221,12 +221,12 @@ class TestFailuresThatOnlyAppearMidBatch:
         fake_smtp.sendmail_raises = smtplib.SMTPServerDisconnected("connection dropped")
         fake_smtp.sendmail_raises_on = "b@example.com"
         mails = [
-            make_mail(to="a@example.com"),
-            make_mail(to="b@example.com"),
-            make_mail(to="c@example.com"),
+            _make_mail(to="a@example.com"),
+            _make_mail(to="b@example.com"),
+            _make_mail(to="c@example.com"),
         ]
         with pytest.raises(smtplib.SMTPServerDisconnected):
-            send_bulk(mails, config=make_config())
+            send_bulk(mails, config=_make_config())
         assert len(fake_smtp.connections) == 1  # one login, no reconnect
         assert [sent.recipients for sent in fake_smtp.sent_messages] == [
             ["a@example.com"]
@@ -235,7 +235,7 @@ class TestFailuresThatOnlyAppearMidBatch:
 
 class TestTheBatchSendsAsTheChosenAccount:
     def test_no_account_uses_the_default(self, fake_smtp):
-        send_bulk([make_mail(to="a@example.com")], config=make_config())
+        send_bulk([_make_mail(to="a@example.com")], config=_make_config())
         assert fake_smtp.logins == [("me@example.com", "app-pw")]
 
     def test_a_named_account_sends_the_whole_batch(self, fake_smtp):
@@ -243,8 +243,10 @@ class TestTheBatchSendsAsTheChosenAccount:
             name="gmail", username="me@gmail.com", provider=GMAIL
         )
         store_password(gmail_account, "gmail-pw")
-        config = make_config(account_by_name={"naver": ACCOUNT, "gmail": gmail_account})
-        send_bulk([make_mail(to="a@example.com")], account="gmail", config=config)
+        config = _make_config(
+            account_by_name={"naver": ACCOUNT, "gmail": gmail_account}
+        )
+        send_bulk([_make_mail(to="a@example.com")], account="gmail", config=config)
         assert fake_smtp.connections[0]["host"] == "smtp.gmail.com"
         assert fake_smtp.logins == [("me@gmail.com", "gmail-pw")]
 
@@ -252,8 +254,8 @@ class TestTheBatchSendsAsTheChosenAccount:
 class TestCcAndBccPerRow:
     def test_a_row_delivers_cc_and_bcc_without_a_bcc_header(self, fake_smtp):
         send_bulk(
-            [make_mail(to="lead", cc="reviewer", bcc="audit@example.com")],
-            config = make_config(),
+            [_make_mail(to="lead", cc="reviewer", bcc="audit@example.com")],
+            config = _make_config(),
         )
         sent = fake_smtp.sent_messages[0]
         assert sent.recipients == [

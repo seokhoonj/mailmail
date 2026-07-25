@@ -24,7 +24,7 @@ README_EN = Path(__file__).parent.parent / "README.md"
 README_KO = Path(__file__).parent.parent / "README.ko.md"
 
 
-def readme_texts() -> list[str]:
+def _readme_texts() -> list[str]:
     """Both language files. The README is split one language per file (English in
     `README.md`, Korean in `README.ko.md`), so a fact that must appear "in the
     README" is checked against both."""
@@ -34,7 +34,7 @@ def readme_texts() -> list[str]:
     ]
 
 
-def config_block() -> str:
+def _config_block() -> str:
     """The TOML the reader is told to write into `~/.config/mailmail/config.toml`.
 
     The example appears once in each language file, and the two must be
@@ -44,7 +44,7 @@ def config_block() -> str:
     """
     blocks: list[str] = [
         block
-        for text in readme_texts()
+        for text in _readme_texts()
         for block in re.findall(r"```toml\n(.*?)```", text, re.DOTALL)
     ]
     assert blocks, "expected a toml config block in the README"
@@ -58,14 +58,14 @@ def config_block() -> str:
 def readme_config(tmp_path, monkeypatch):
     """A loaded config, built from the README's own example."""
     path = tmp_path / "config.toml"
-    path.write_text(config_block(), encoding="utf-8")
+    path.write_text(_config_block(), encoding="utf-8")
     monkeypatch.setenv("MAILMAIL_CONFIG", str(path))
     return load_config()
 
 
 class TestTheConfigExampleWorks:
     def test_it_is_valid_toml(self):
-        assert tomllib.loads(config_block())
+        assert tomllib.loads(_config_block())
 
     def test_it_loads(self, readme_config):
         assert readme_config.account_by_name
@@ -86,12 +86,12 @@ class TestTheConfigExampleWorks:
         show that one, so a schema change cannot leave a stale copy behind."""
         from mailmail import STARTER_CONFIG
 
-        assert config_block().strip() == STARTER_CONFIG.strip()
+        assert _config_block().strip() == STARTER_CONFIG.strip()
 
     def test_it_does_not_teach_a_defaults_table(self):
         """The config example is what people paste. A `[defaults]` table in it
         would not merely be stale -- `load_config` refuses the whole file."""
-        assert "[defaults]" not in config_block()
+        assert "[defaults]" not in _config_block()
 
     def test_the_accounts_it_defines_resolve(self, readme_config):
         for name in readme_config.account_by_name:
@@ -141,7 +141,7 @@ class TestTheFactsItStatesAreTheCodesFacts:
 
     def test_it_does_not_claim_a_test_count(self):
         # It cannot be right for longer than it takes to add a test.
-        both = "\n".join(readme_texts())
+        both = "\n".join(_readme_texts())
         assert not re.search(r"\d+\s*개[,.]?\s*전부 오프라인", both)
 
     def test_every_public_name_it_shows_exists(self):
@@ -149,7 +149,7 @@ class TestTheFactsItStatesAreTheCodesFacts:
         report from the future, filed by whoever pastes it."""
         import mailmail
 
-        both = "\n".join(readme_texts())
+        both = "\n".join(_readme_texts())
         shown = set(re.findall(r"from mailmail import ([^\n]+)", both))
         names = {name.strip() for line in shown for name in line.split(",")}
         missing = [name for name in names if not hasattr(mailmail, name)]

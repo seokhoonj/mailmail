@@ -26,7 +26,7 @@ team = ["me@naver.com", "lead"]
 """
 
 
-def write_config(tmp_path, text):
+def _write_config(tmp_path, text):
     path = tmp_path / "config.toml"
     path.write_text(text, encoding="utf-8")
     return path
@@ -34,28 +34,28 @@ def write_config(tmp_path, text):
 
 class TestAccounts:
     def test_accounts_are_read_with_their_providers(self, tmp_path):
-        config = load_config(write_config(tmp_path, TWO_ACCOUNT_CONFIG))
+        config = load_config(_write_config(tmp_path, TWO_ACCOUNT_CONFIG))
         assert set(config.account_by_name) == {"naver", "gmail"}
         assert config.account_by_name["naver"].username == "me@naver.com"
         assert config.account_by_name["naver"].provider.smtp_host == "smtp.naver.com"
         assert config.account_by_name["gmail"].provider.smtp_host == "smtp.gmail.com"
 
     def test_account_defaults_to_the_named_default(self, tmp_path):
-        config = load_config(write_config(tmp_path, TWO_ACCOUNT_CONFIG))
+        config = load_config(_write_config(tmp_path, TWO_ACCOUNT_CONFIG))
         assert config.resolve_account().name == "naver"
 
     def test_account_can_be_asked_for_by_name(self, tmp_path):
-        config = load_config(write_config(tmp_path, TWO_ACCOUNT_CONFIG))
+        config = load_config(_write_config(tmp_path, TWO_ACCOUNT_CONFIG))
         assert config.resolve_account("gmail").username == "me@gmail.com"
 
     def test_unknown_account_names_the_configured_ones(self, tmp_path):
-        config = load_config(write_config(tmp_path, TWO_ACCOUNT_CONFIG))
+        config = load_config(_write_config(tmp_path, TWO_ACCOUNT_CONFIG))
         with pytest.raises(UnknownAccountError) as caught:
             config.resolve_account("outlook")
         assert "gmail" in str(caught.value)
 
     def test_lone_account_needs_no_default_declared(self, tmp_path):
-        path = write_config(
+        path = _write_config(
             tmp_path,
             '[accounts.naver]\nprovider = "naver"\nusername = "me@naver.com"\n',
         )
@@ -68,10 +68,10 @@ class TestAccounts:
             'default_account = "naver"', ""
         )
         with pytest.raises(ConfigError, match="no default_account"):
-            load_config(write_config(tmp_path, config_without_default))
+            load_config(_write_config(tmp_path, config_without_default))
 
     def test_default_naming_a_missing_account_is_refused(self, tmp_path):
-        path = write_config(
+        path = _write_config(
             tmp_path,
             'default_account = "outlook"\n'
             '[accounts.naver]\nprovider = "naver"\nusername = "me@naver.com"\n',
@@ -80,7 +80,7 @@ class TestAccounts:
             load_config(path)
 
     def test_unknown_provider_is_refused_at_load_time(self, tmp_path):
-        path = write_config(
+        path = _write_config(
             tmp_path,
             '[accounts.work]\nprovider = "hanmail"\nusername = "me@hanmail.net"\n',
         )
@@ -88,29 +88,29 @@ class TestAccounts:
             load_config(path)
 
     def test_account_missing_a_username_is_refused(self, tmp_path):
-        path = write_config(tmp_path, '[accounts.naver]\nprovider = "naver"\n')
+        path = _write_config(tmp_path, '[accounts.naver]\nprovider = "naver"\n')
         with pytest.raises(ConfigError, match="username"):
             load_config(path)
 
 
 class TestAddressBook:
     def test_string_contact_becomes_a_one_entry_alias(self, tmp_path):
-        config = load_config(write_config(tmp_path, TWO_ACCOUNT_CONFIG))
+        config = load_config(_write_config(tmp_path, TWO_ACCOUNT_CONFIG))
         assert config.address_book["lead-naver"] == ("lead@naver.com",)
 
     def test_list_contact_becomes_a_group(self, tmp_path):
-        config = load_config(write_config(tmp_path, TWO_ACCOUNT_CONFIG))
+        config = load_config(_write_config(tmp_path, TWO_ACCOUNT_CONFIG))
         assert config.address_book["team"] == ("me@naver.com", "lead")
 
     def test_address_book_may_be_absent(self, tmp_path):
-        path = write_config(
+        path = _write_config(
             tmp_path,
             '[accounts.naver]\nprovider = "naver"\nusername = "me@naver.com"\n',
         )
         assert load_config(path).address_book == {}
 
     def test_contact_of_the_wrong_shape_is_refused(self, tmp_path):
-        path = write_config(
+        path = _write_config(
             tmp_path,
             '[accounts.naver]\nprovider = "naver"\nusername = "me@naver.com"\n'
             "[contacts]\nlead = 42\n",
@@ -119,7 +119,7 @@ class TestAddressBook:
             load_config(path)
 
     def test_quoted_alias_may_contain_a_dot(self, tmp_path):
-        path = write_config(
+        path = _write_config(
             tmp_path,
             '[accounts.naver]\nprovider = "naver"\nusername = "me@naver.com"\n'
             '[contacts]\n"jane.doe" = "jane@example.com"\n',
@@ -128,7 +128,7 @@ class TestAddressBook:
         assert config.address_book["jane.doe"] == ("jane@example.com",)
 
     def test_quoted_dotted_aliases_can_be_grouped(self, tmp_path):
-        path = write_config(
+        path = _write_config(
             tmp_path,
             '[accounts.naver]\nprovider = "naver"\nusername = "me@naver.com"\n'
             "[contacts]\n"
@@ -143,7 +143,7 @@ class TestAddressBook:
         # TOML reads `jane.doe = "..."` as a table `jane` holding `doe`, so the
         # reader is told about an alias named "jane" they never wrote. The error
         # has to name the cause or it sends them hunting.
-        path = write_config(
+        path = _write_config(
             tmp_path,
             '[accounts.naver]\nprovider = "naver"\nusername = "me@naver.com"\n'
             "[contacts]\njane.doe = \"jane@example.com\"\n",
@@ -166,11 +166,11 @@ class TestFileItself:
 
     def test_malformed_toml_is_reported_as_such(self, tmp_path):
         with pytest.raises(ConfigError, match="not valid TOML"):
-            load_config(write_config(tmp_path, "this is not toml ["))
+            load_config(_write_config(tmp_path, "this is not toml ["))
 
     def test_file_without_accounts_is_refused(self, tmp_path):
         with pytest.raises(ConfigError, match="no accounts"):
-            load_config(write_config(tmp_path, 'default_account = "naver"\n'))
+            load_config(_write_config(tmp_path, 'default_account = "naver"\n'))
 
 
 class TestARetiredDefaultsTable:
@@ -182,16 +182,16 @@ class TestARetiredDefaultsTable:
     worse than config that is refused, so it is refused.
     """
 
-    def with_defaults(self, tmp_path, table):
-        return write_config(tmp_path, f"{TWO_ACCOUNT_CONFIG}\n{table}")
+    def _with_defaults(self, tmp_path, table):
+        return _write_config(tmp_path, f"{TWO_ACCOUNT_CONFIG}\n{table}")
 
     def test_it_is_refused_rather_than_ignored(self, tmp_path):
         with pytest.raises(ConfigError, match=r"\[defaults\]"):
-            load_config(self.with_defaults(tmp_path, "[defaults]\nto = 'lead'\n"))
+            load_config(self._with_defaults(tmp_path, "[defaults]\nto = 'lead'\n"))
 
     def test_the_message_says_what_to_do_instead(self, tmp_path):
         with pytest.raises(ConfigError) as caught:
-            load_config(self.with_defaults(tmp_path, "[defaults]\ncc = 'lead'\n"))
+            load_config(self._with_defaults(tmp_path, "[defaults]\ncc = 'lead'\n"))
         message = str(caught.value)
         assert "send(to=" in message  # name them on the call
         assert "delete the table" in message
@@ -199,7 +199,7 @@ class TestARetiredDefaultsTable:
     def test_an_empty_table_is_refused_too(self, tmp_path):
         # It still means its author expects defaults to work.
         with pytest.raises(ConfigError, match=r"\[defaults\]"):
-            load_config(self.with_defaults(tmp_path, "[defaults]\n"))
+            load_config(self._with_defaults(tmp_path, "[defaults]\n"))
 
 
 class TestDefaultLocation:
@@ -313,7 +313,7 @@ def test_a_tilde_in_an_explicit_path_is_expanded(tmp_path, monkeypatch):
     # The positive counterpart to the unresolvable-`~user` case: `~` (expanded via
     # $HOME) resolves an explicit path to a real file that then loads.
     monkeypatch.setenv("HOME", str(tmp_path))
-    write_config(tmp_path, TWO_ACCOUNT_CONFIG)
+    _write_config(tmp_path, TWO_ACCOUNT_CONFIG)
     config = load_config("~/config.toml")
     assert config.default_account == "naver"
 
@@ -321,7 +321,7 @@ def test_a_tilde_in_an_explicit_path_is_expanded(tmp_path, monkeypatch):
 def test_resolve_account_does_not_treat_an_empty_name_as_the_default(tmp_path):
     # `name or default` would redirect an explicit "" to the default; an explicitly
     # named account must be looked up, not silently swapped for the default.
-    config = load_config(write_config(tmp_path, TWO_ACCOUNT_CONFIG))
+    config = load_config(_write_config(tmp_path, TWO_ACCOUNT_CONFIG))
     with pytest.raises(UnknownAccountError, match="''"):
         config.resolve_account("")
 
@@ -335,7 +335,7 @@ def test_a_line_break_in_a_username_is_refused(tmp_path):
         'username = "me\\nBcc: attacker@example.com"\n'
     )
     with pytest.raises(ConfigError, match="line break"):
-        load_config(write_config(tmp_path, toml))
+        load_config(_write_config(tmp_path, toml))
 
 
 def test_a_config_path_that_is_a_directory_is_a_config_error(tmp_path):

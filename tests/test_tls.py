@@ -116,7 +116,7 @@ def impostor(attacker_certificate):
     server.close()
 
 
-def account_pointed_at(port) -> SmtpAccount:
+def _account_pointed_at(port) -> SmtpAccount:
     provider = MailProvider(
         name              = "impostor",
         smtp_host         = "127.0.0.1",
@@ -136,7 +136,7 @@ class TestAServerNobodyVouchesFor:
 
         with (
             pytest.raises(ssl.SSLCertVerificationError),
-            Mailer(account_pointed_at(impostor.port)) as mailer,
+            Mailer(_account_pointed_at(impostor.port)) as mailer,
         ):
             mailer.send(message)
 
@@ -154,7 +154,7 @@ class TestAServerNobodyVouchesFor:
 
         with (
             pytest.raises(ssl.SSLCertVerificationError),
-            Mailer(account_pointed_at(impostor.port)) as mailer,
+            Mailer(_account_pointed_at(impostor.port)) as mailer,
         ):
             mailer.send(message)
 

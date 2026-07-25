@@ -28,13 +28,13 @@ from mailmail.message import Message
 from mailmail.provider import GMAIL, NAVER
 
 
-def write_file(directory, name, content=b"payload"):
+def _write_file(directory, name, content=b"payload"):
     path = directory / name
     path.write_bytes(content)
     return path
 
 
-def write_zip(directory, name, member_names):
+def _write_zip(directory, name, member_names):
     path = directory / name
     with zipfile.ZipFile(path, "w") as archive:
         for member_name in member_names:
@@ -42,7 +42,7 @@ def write_zip(directory, name, member_names):
     return path
 
 
-def write_zip_of_files(directory, name, paths):
+def _write_zip_of_files(directory, name, paths):
     """A zip holding real files from disk, so a member can itself be an archive."""
     path = directory / name
     with zipfile.ZipFile(path, "w") as archive:
@@ -51,7 +51,7 @@ def write_zip_of_files(directory, name, paths):
     return path
 
 
-def write_tar_of_files(directory, name, paths, mode="w"):
+def _write_tar_of_files(directory, name, paths, mode="w"):
     path = directory / name
     with tarfile.open(path, mode) as archive:
         for member_path in paths:
@@ -59,7 +59,7 @@ def write_tar_of_files(directory, name, paths, mode="w"):
     return path
 
 
-def write_encrypted_zip(directory, name, member_name="notes.txt"):
+def _write_encrypted_zip(directory, name, member_name="notes.txt"):
     """A zip whose headers say "encrypted", as a real one's do.
 
     zipfile cannot write encrypted archives, and it recomputes `flag_bits` on
@@ -69,7 +69,7 @@ def write_encrypted_zip(directory, name, member_name="notes.txt"):
     `zip -P` command line tool, which produces `flag_bits == 0x9`: bit 0 for
     encryption, bit 3 for a trailing data descriptor.
     """
-    path = write_zip(directory, name, [member_name])
+    path = _write_zip(directory, name, [member_name])
     raw = bytearray(path.read_bytes())
     for signature, flag_offset in ((b"PK\x03\x04", 6), (b"PK\x01\x02", 8)):
         header_start = raw.find(signature)
@@ -79,11 +79,11 @@ def write_encrypted_zip(directory, name, member_name="notes.txt"):
     return path
 
 
-def write_tar(directory, name, member_names, mode="w"):
+def _write_tar(directory, name, member_names, mode="w"):
     path = directory / name
     with tarfile.open(path, mode) as archive:
         for member_name in member_names:
-            member_path = write_file(directory, f"staged-{member_name}")
+            member_path = _write_file(directory, f"staged-{member_name}")
             archive.add(member_path, arcname=member_name)
     return path
 
@@ -102,15 +102,15 @@ class TestMimeGuessing:
         ],
     )
     def test_known_suffix_gets_its_type(self, tmp_path, filename, expected_mime_type):
-        attachment = Attachment.from_path(write_file(tmp_path, filename))
+        attachment = Attachment.from_path(_write_file(tmp_path, filename))
         assert attachment.mime_type == expected_mime_type
 
     def test_unknown_suffix_falls_back_to_octet_stream(self, tmp_path):
-        attachment = Attachment.from_path(write_file(tmp_path, "model.parquet"))
+        attachment = Attachment.from_path(_write_file(tmp_path, "model.parquet"))
         assert attachment.mime_type == "application/octet-stream"
 
     def test_size_is_read_from_disk(self, tmp_path):
-        attachment = Attachment.from_path(write_file(tmp_path, "notes.txt", b"12345"))
+        attachment = Attachment.from_path(_write_file(tmp_path, "notes.txt", b"12345"))
         assert attachment.size_bytes == 5
 
     def test_missing_file_is_reported_at_construction(self, tmp_path):
@@ -139,7 +139,7 @@ class TestBlockedFileTypes:
     """Executable types are refused whether bare, zipped, or renamed."""
 
     def test_ordinary_office_file_is_allowed(self, tmp_path):
-        attachment = Attachment.from_path(write_file(tmp_path, "report.xlsx"))
+        attachment = Attachment.from_path(_write_file(tmp_path, "report.xlsx"))
         check_attachments([attachment], provider=GMAIL)
 
     @pytest.mark.parametrize(
@@ -147,27 +147,27 @@ class TestBlockedFileTypes:
         ["setup.exe", "macro.vbs", "script.js", "installer.msi", "tool.jar"],
     )
     def test_executable_is_refused(self, tmp_path, filename):
-        attachment = Attachment.from_path(write_file(tmp_path, filename))
+        attachment = Attachment.from_path(_write_file(tmp_path, filename))
         with pytest.raises(BlockedAttachmentError):
             check_attachments([attachment], provider=GMAIL)
 
     def test_suffix_case_does_not_smuggle_it_through(self, tmp_path):
-        attachment = Attachment.from_path(write_file(tmp_path, "Setup.EXE"))
+        attachment = Attachment.from_path(_write_file(tmp_path, "Setup.EXE"))
         with pytest.raises(BlockedAttachmentError):
             check_attachments([attachment], provider=GMAIL)
 
     def test_naver_refuses_the_same_executables_as_gmail(self, tmp_path):
-        attachment = Attachment.from_path(write_file(tmp_path, "setup.exe"))
+        attachment = Attachment.from_path(_write_file(tmp_path, "setup.exe"))
         with pytest.raises(BlockedAttachmentError):
             check_attachments([attachment], provider=NAVER)
 
     def test_python_source_is_allowed_though_javascript_is_not(self, tmp_path):
         check_attachments(
-            [Attachment.from_path(write_file(tmp_path, "analysis.py"))], provider=GMAIL
+            [Attachment.from_path(_write_file(tmp_path, "analysis.py"))], provider=GMAIL
         )
         with pytest.raises(BlockedAttachmentError):
             check_attachments(
-                [Attachment.from_path(write_file(tmp_path, "bundle.js"))],
+                [Attachment.from_path(_write_file(tmp_path, "bundle.js"))],
                 provider=GMAIL,
             )
 
@@ -175,7 +175,7 @@ class TestBlockedFileTypes:
         # It names .zip and .tar.gz specifically, and does not claim archives in
         # general: .7z and .rar have no stdlib reader and are not looked inside,
         # so "compressing never helps" would be a promise the code cannot keep.
-        attachment = Attachment.from_path(write_file(tmp_path, "setup.exe"))
+        attachment = Attachment.from_path(_write_file(tmp_path, "setup.exe"))
         with pytest.raises(BlockedAttachmentError) as caught:
             check_attachments([attachment], provider=GMAIL)
         message = str(caught.value)
@@ -183,8 +183,8 @@ class TestBlockedFileTypes:
         assert "inside archives" not in message
 
     def test_one_bad_attachment_condemns_the_whole_message(self, tmp_path):
-        allowed = Attachment.from_path(write_file(tmp_path, "report.pdf"))
-        blocked = Attachment.from_path(write_file(tmp_path, "setup.exe"))
+        allowed = Attachment.from_path(_write_file(tmp_path, "report.pdf"))
+        blocked = Attachment.from_path(_write_file(tmp_path, "setup.exe"))
         with pytest.raises(BlockedAttachmentError):
             check_attachments([allowed, blocked], provider=GMAIL)
 
@@ -193,50 +193,50 @@ class TestArchiveContents:
     """The block reaches inside archives the standard library can read."""
 
     def test_clean_zip_is_allowed(self, tmp_path):
-        archive = write_zip(tmp_path, "reports.zip", ["q1.pdf", "q2.xlsx"])
+        archive = _write_zip(tmp_path, "reports.zip", ["q1.pdf", "q2.xlsx"])
         check_attachments([Attachment.from_path(archive)], provider=GMAIL)
 
     def test_zip_hiding_an_executable_is_refused(self, tmp_path):
-        archive = write_zip(tmp_path, "bundle.zip", ["readme.txt", "setup.exe"])
+        archive = _write_zip(tmp_path, "bundle.zip", ["readme.txt", "setup.exe"])
         with pytest.raises(BlockedAttachmentError, match="setup.exe"):
             check_attachments([Attachment.from_path(archive)], provider=GMAIL)
 
     def test_executable_nested_in_a_zip_folder_is_still_found(self, tmp_path):
-        archive = write_zip(tmp_path, "bundle.zip", ["tools/bin/setup.exe"])
+        archive = _write_zip(tmp_path, "bundle.zip", ["tools/bin/setup.exe"])
         with pytest.raises(BlockedAttachmentError):
             check_attachments([Attachment.from_path(archive)], provider=GMAIL)
 
     def test_clean_tar_is_allowed(self, tmp_path):
-        archive = write_tar(tmp_path, "reports.tar", ["q1.pdf"])
+        archive = _write_tar(tmp_path, "reports.tar", ["q1.pdf"])
         check_attachments([Attachment.from_path(archive)], provider=GMAIL)
 
     def test_tar_hiding_an_executable_is_refused(self, tmp_path):
-        archive = write_tar(tmp_path, "bundle.tar", ["setup.exe"])
+        archive = _write_tar(tmp_path, "bundle.tar", ["setup.exe"])
         with pytest.raises(BlockedAttachmentError, match="setup.exe"):
             check_attachments([Attachment.from_path(archive)], provider=GMAIL)
 
     def test_compressed_tar_is_looked_inside_too(self, tmp_path):
-        archive = write_tar(tmp_path, "bundle.tar.gz", ["setup.exe"], mode="w:gz")
+        archive = _write_tar(tmp_path, "bundle.tar.gz", ["setup.exe"], mode="w:gz")
         with pytest.raises(BlockedAttachmentError, match="setup.exe"):
             check_attachments([Attachment.from_path(archive)], provider=GMAIL)
 
     def test_gzipped_executable_is_refused_on_the_name_underneath(self, tmp_path):
-        attachment = Attachment.from_path(write_file(tmp_path, "setup.exe.gz"))
+        attachment = Attachment.from_path(_write_file(tmp_path, "setup.exe.gz"))
         with pytest.raises(BlockedAttachmentError):
             check_attachments([attachment], provider=GMAIL)
 
     def test_gzipped_executable_is_reported_once_not_twice(self, tmp_path):
-        attachment = Attachment.from_path(write_file(tmp_path, "setup.exe.gz"))
+        attachment = Attachment.from_path(_write_file(tmp_path, "setup.exe.gz"))
         with pytest.raises(BlockedAttachmentError) as caught:
             check_attachments([attachment], provider=GMAIL)
         assert str(caught.value).count("setup.exe.gz") == 1
 
     def test_gzipped_ordinary_file_is_allowed(self, tmp_path):
-        attachment = Attachment.from_path(write_file(tmp_path, "report.pdf.gz"))
+        attachment = Attachment.from_path(_write_file(tmp_path, "report.pdf.gz"))
         check_attachments([attachment], provider=GMAIL)
 
     def test_password_protected_zip_is_refused_unopened(self, tmp_path):
-        archive = write_encrypted_zip(tmp_path, "secret.zip")
+        archive = _write_encrypted_zip(tmp_path, "secret.zip")
         with pytest.raises(EncryptedArchiveError, match="password-protected"):
             check_attachments([Attachment.from_path(archive)], provider=GMAIL)
 
@@ -245,7 +245,7 @@ class TestArchiveContents:
     ):
         # Nothing inside is blocked; the refusal is about the provider being
         # unable to look, not about what it would have found.
-        archive = write_encrypted_zip(tmp_path, "secret.zip", member_name="notes.txt")
+        archive = _write_encrypted_zip(tmp_path, "secret.zip", member_name="notes.txt")
         with pytest.raises(EncryptedArchiveError):
             check_attachments([Attachment.from_path(archive)], provider=GMAIL)
 
@@ -255,20 +255,20 @@ class TestArchiveContents:
         # Guards the fixture itself: an earlier version set flag_bits on an
         # in-memory ZipInfo, which zipfile silently discarded on write, so the
         # test passed a plain zip off as an encrypted one.
-        archive = write_encrypted_zip(tmp_path, "secret.zip")
+        archive = _write_encrypted_zip(tmp_path, "secret.zip")
         with zipfile.ZipFile(archive) as opened:
             assert all(member.flag_bits & 0x1 for member in opened.infolist())
 
     def test_office_file_is_not_treated_as_an_archive(self, tmp_path):
         # An .xlsx is physically a zip; providers do not scan it as one, and
         # neither do we -- the suffix decides, not the bytes.
-        workbook = write_zip(tmp_path, "book.xlsx", ["xl/worksheets/sheet1.xml"])
+        workbook = _write_zip(tmp_path, "book.xlsx", ["xl/worksheets/sheet1.xml"])
         check_attachments([Attachment.from_path(workbook)], provider=GMAIL)
 
     def test_file_named_zip_that_is_not_one_is_judged_on_its_suffix_alone(
         self, tmp_path
     ):
-        pretender = write_file(tmp_path, "broken.zip", b"not really a zip")
+        pretender = _write_file(tmp_path, "broken.zip", b"not really a zip")
         check_attachments([Attachment.from_path(pretender)], provider=GMAIL)
 
 
@@ -291,16 +291,16 @@ class TestNamesThatEvadeASuffixMatch:
         ],
     )
     def test_padded_executable_name_is_still_refused(self, tmp_path, member_name, why):
-        archive = write_zip(tmp_path, "bundle.zip", [member_name])
+        archive = _write_zip(tmp_path, "bundle.zip", [member_name])
         with pytest.raises(BlockedAttachmentError):
             check_attachments([Attachment.from_path(archive)], provider=GMAIL)
 
     def test_padding_does_not_make_an_ordinary_file_look_blocked(self, tmp_path):
-        archive = write_zip(tmp_path, "reports.zip", ["report.pdf.", "notes.txt "])
+        archive = _write_zip(tmp_path, "reports.zip", ["report.pdf.", "notes.txt "])
         check_attachments([Attachment.from_path(archive)], provider=GMAIL)
 
     def test_a_name_of_only_padding_is_not_blocked(self, tmp_path):
-        archive = write_zip(tmp_path, "odd.zip", ["..."])
+        archive = _write_zip(tmp_path, "odd.zip", ["..."])
         check_attachments([Attachment.from_path(archive)], provider=GMAIL)
 
 
@@ -313,33 +313,33 @@ class TestNestedArchives:
     """
 
     def test_executable_one_archive_down_is_refused(self, tmp_path):
-        inner = write_zip(tmp_path, "inner.zip", ["setup.exe"])
-        outer = write_zip_of_files(tmp_path, "outer.zip", [inner])
+        inner = _write_zip(tmp_path, "inner.zip", ["setup.exe"])
+        outer = _write_zip_of_files(tmp_path, "outer.zip", [inner])
         with pytest.raises(BlockedAttachmentError, match="setup.exe"):
             check_attachments([Attachment.from_path(outer)], provider=GMAIL)
 
     def test_executable_two_archives_down_is_refused(self, tmp_path):
-        inner = write_zip(tmp_path, "inner.zip", ["setup.exe"])
-        middle = write_zip_of_files(tmp_path, "middle.zip", [inner])
-        outer = write_zip_of_files(tmp_path, "outer.zip", [middle])
+        inner = _write_zip(tmp_path, "inner.zip", ["setup.exe"])
+        middle = _write_zip_of_files(tmp_path, "middle.zip", [inner])
+        outer = _write_zip_of_files(tmp_path, "outer.zip", [middle])
         with pytest.raises(BlockedAttachmentError, match="setup.exe"):
             check_attachments([Attachment.from_path(outer)], provider=GMAIL)
 
     def test_tar_inside_a_zip_is_looked_inside(self, tmp_path):
-        inner = write_tar(tmp_path, "inner.tar", ["setup.exe"])
-        outer = write_zip_of_files(tmp_path, "outer.zip", [inner])
+        inner = _write_tar(tmp_path, "inner.tar", ["setup.exe"])
+        outer = _write_zip_of_files(tmp_path, "outer.zip", [inner])
         with pytest.raises(BlockedAttachmentError, match="setup.exe"):
             check_attachments([Attachment.from_path(outer)], provider=GMAIL)
 
     def test_zip_inside_a_tar_is_looked_inside(self, tmp_path):
-        inner = write_zip(tmp_path, "inner.zip", ["setup.exe"])
-        outer = write_tar_of_files(tmp_path, "outer.tar", [inner])
+        inner = _write_zip(tmp_path, "inner.zip", ["setup.exe"])
+        outer = _write_tar_of_files(tmp_path, "outer.tar", [inner])
         with pytest.raises(BlockedAttachmentError, match="setup.exe"):
             check_attachments([Attachment.from_path(outer)], provider=GMAIL)
 
     def test_clean_nested_archives_are_allowed(self, tmp_path):
-        inner = write_zip(tmp_path, "inner.zip", ["q1.pdf"])
-        outer = write_zip_of_files(tmp_path, "outer.zip", [inner])
+        inner = _write_zip(tmp_path, "inner.zip", ["q1.pdf"])
+        outer = _write_zip_of_files(tmp_path, "outer.zip", [inner])
         check_attachments([Attachment.from_path(outer)], provider=GMAIL)
 
     def test_a_nest_too_deep_to_scan_is_refused_rather_than_waved_through(
@@ -347,18 +347,18 @@ class TestNestedArchives:
     ):
         # Refusing is the honest answer: the point of the check is that nothing
         # unscanned reaches the server, so "too deep to look" cannot mean "fine".
-        archive = write_zip(tmp_path, "deep.zip", ["q1.pdf"])
+        archive = _write_zip(tmp_path, "deep.zip", ["q1.pdf"])
         for level in range(_MAX_ARCHIVE_DEPTH + 1):
-            archive = write_zip_of_files(tmp_path, f"wrap{level}.zip", [archive])
+            archive = _write_zip_of_files(tmp_path, f"wrap{level}.zip", [archive])
         with pytest.raises(UnscannableArchiveError, match="deep"):
             check_attachments([Attachment.from_path(archive)], provider=GMAIL)
 
     def test_a_deep_nest_is_not_reported_as_password_protected(self, tmp_path):
         # It used to raise EncryptedArchiveError, which sent whoever hit it
         # looking for a password that was never there. Nothing here is encrypted.
-        archive = write_zip(tmp_path, "deep.zip", ["q1.pdf"])
+        archive = _write_zip(tmp_path, "deep.zip", ["q1.pdf"])
         for level in range(_MAX_ARCHIVE_DEPTH + 1):
-            archive = write_zip_of_files(tmp_path, f"wrap{level}.zip", [archive])
+            archive = _write_zip_of_files(tmp_path, f"wrap{level}.zip", [archive])
         with pytest.raises(UnscannableArchiveError) as caught:
             check_attachments([Attachment.from_path(archive)], provider=GMAIL)
         assert not isinstance(caught.value, EncryptedArchiveError)
@@ -367,7 +367,7 @@ class TestNestedArchives:
     def test_an_encrypted_zip_is_still_the_narrower_error(self, tmp_path):
         # Encryption stays its own name -- it is the one unscannable reason the
         # sender can actually do something about.
-        archive = write_encrypted_zip(tmp_path, "secret.zip")
+        archive = _write_encrypted_zip(tmp_path, "secret.zip")
         with pytest.raises(EncryptedArchiveError):
             check_attachments([Attachment.from_path(archive)], provider=GMAIL)
 
@@ -382,11 +382,11 @@ class TestArchiveNamesAreNotFilenames:
         # The filesystem caps a name at 255 bytes, so this is unreachable as a
         # real file -- but a zip stores names up to 64 KB, and the peel used to
         # recurse once per suffix.
-        archive = write_zip(tmp_path, "bundle.zip", ["payload" + ".gz" * 5000])
+        archive = _write_zip(tmp_path, "bundle.zip", ["payload" + ".gz" * 5000])
         check_attachments([Attachment.from_path(archive)], provider=GMAIL)
 
     def test_a_thousand_stacked_gz_over_an_executable_is_still_refused(self, tmp_path):
-        archive = write_zip(tmp_path, "bundle.zip", ["setup.exe" + ".gz" * 5000])
+        archive = _write_zip(tmp_path, "bundle.zip", ["setup.exe" + ".gz" * 5000])
         with pytest.raises(BlockedAttachmentError):
             check_attachments([Attachment.from_path(archive)], provider=GMAIL)
 
@@ -395,21 +395,21 @@ class TestUnreadableArchives:
     def test_a_corrupt_tar_is_not_read_as_empty_and_therefore_clean(self, tmp_path):
         # `except tarfile.TarError` was the whole family, so a tar that failed to
         # read produced "no members" -- indistinguishable from "nothing blocked".
-        pretender = write_file(tmp_path, "broken.tar", b"not really a tar at all")
+        pretender = _write_file(tmp_path, "broken.tar", b"not really a tar at all")
         check_attachments([Attachment.from_path(pretender)], provider=GMAIL)
 
     def test_tar_bz2_hiding_an_executable_is_refused(self, tmp_path):
-        archive = write_tar(tmp_path, "bundle.tar.bz2", ["setup.exe"], mode="w:bz2")
+        archive = _write_tar(tmp_path, "bundle.tar.bz2", ["setup.exe"], mode="w:bz2")
         with pytest.raises(BlockedAttachmentError, match="setup.exe"):
             check_attachments([Attachment.from_path(archive)], provider=GMAIL)
 
     def test_tbz2_hiding_an_executable_is_refused(self, tmp_path):
-        archive = write_tar(tmp_path, "bundle.tbz2", ["setup.exe"], mode="w:bz2")
+        archive = _write_tar(tmp_path, "bundle.tbz2", ["setup.exe"], mode="w:bz2")
         with pytest.raises(BlockedAttachmentError, match="setup.exe"):
             check_attachments([Attachment.from_path(archive)], provider=GMAIL)
 
     def test_txz_hiding_an_executable_is_refused(self, tmp_path):
-        archive = write_tar(tmp_path, "bundle.txz", ["setup.exe"], mode="w:xz")
+        archive = _write_tar(tmp_path, "bundle.txz", ["setup.exe"], mode="w:xz")
         with pytest.raises(BlockedAttachmentError, match="setup.exe"):
             check_attachments([Attachment.from_path(archive)], provider=GMAIL)
 
@@ -435,7 +435,7 @@ class TestUnreadableArchives:
         # there is no stdlib reader for .7z, so an executable inside one reaches
         # the server and is refused there. Refusing every .7z locally would be
         # worse -- it would block the innocent ones the provider accepts.
-        sevenzip = write_file(tmp_path, "bundle.7z", b"7z\xbc\xaf\x27\x1c fake")
+        sevenzip = _write_file(tmp_path, "bundle.7z", b"7z\xbc\xaf\x27\x1c fake")
         check_attachments([Attachment.from_path(sevenzip)], provider=GMAIL)
 
 
@@ -525,8 +525,8 @@ class TestAnArchiveThatCannotBeReadToTheEnd:
         raised while reading member 0 stopped the generator before member 1 --
         the executable -- was ever yielded.
         """
-        inner = write_zip(tmp_path, "inner.zip", ["notes.txt"])
-        blocked = write_file(tmp_path, "setup.exe", b"MZ")
+        inner = _write_zip(tmp_path, "inner.zip", ["notes.txt"])
+        blocked = _write_file(tmp_path, "setup.exe", b"MZ")
         outer = tmp_path / "outer.zip"
         with zipfile.ZipFile(outer, "w", zipfile.ZIP_STORED) as archive:
             archive.write(inner, "inner.zip")  # scanned first, and corrupted below
@@ -548,8 +548,8 @@ class TestAnArchiveThatCannotBeReadToTheEnd:
         stops early" -- both raise it -- so the catch meant for the first
         silently covered the second.
         """
-        blocked = write_file(tmp_path, "setup.exe", b"MZ")
-        filler = write_file(tmp_path, "big.bin", b"C" * 200_000)
+        blocked = _write_file(tmp_path, "setup.exe", b"MZ")
+        filler = _write_file(tmp_path, "big.bin", b"C" * 200_000)
         full = tmp_path / "full.tar"
         with tarfile.open(full, "w") as archive:
             archive.add(blocked, "setup.exe")
@@ -571,7 +571,7 @@ class TestAnArchiveThatCannotBeReadToTheEnd:
         failure to scan -- there is no archive -- so it passes on its own suffix
         like any other file, rather than being refused as unscannable.
         """
-        not_really = write_file(tmp_path, "notes.zip", b"this is plain text")
+        not_really = _write_file(tmp_path, "notes.zip", b"this is plain text")
         check_attachments([Attachment.from_path(not_really)], provider=GMAIL)
 
 
@@ -584,23 +584,23 @@ class TestTheAttachmentConstructorGuardsItsMimeType:
     """
 
     def test_a_type_without_a_subtype_is_refused(self, tmp_path):
-        path = write_file(tmp_path, "report.pdf")
+        path = _write_file(tmp_path, "report.pdf")
         with pytest.raises(AttachmentError, match="maintype/subtype"):
             Attachment(path=path, mime_type="pdf", size_bytes=path.stat().st_size)
 
     def test_an_empty_subtype_is_refused(self, tmp_path):
-        path = write_file(tmp_path, "report.pdf")
+        path = _write_file(tmp_path, "report.pdf")
         with pytest.raises(AttachmentError, match="maintype/subtype"):
             Attachment(path=path, mime_type="application/", size_bytes=1)
 
     def test_the_error_points_at_the_factory_that_gets_it_right(self, tmp_path):
-        path = write_file(tmp_path, "report.pdf")
+        path = _write_file(tmp_path, "report.pdf")
         with pytest.raises(AttachmentError) as caught:
             Attachment(path=path, mime_type="pdf", size_bytes=1)
         assert "from_path" in str(caught.value)
 
     def test_from_path_produces_one_that_passes(self, tmp_path):
-        attachment = Attachment.from_path(write_file(tmp_path, "report.pdf"))
+        attachment = Attachment.from_path(_write_file(tmp_path, "report.pdf"))
         assert attachment.mime_type == "application/pdf"
 
 
@@ -615,16 +615,16 @@ class TestANestedArchiveTooBigToLookInside:
 
     def test_a_member_past_the_scan_budget_is_refused(self, tmp_path, monkeypatch):
         monkeypatch.setattr("mailmail.attachment._MAX_NESTED_ARCHIVE_BYTES", 64)
-        inner = write_zip(tmp_path, "inner.zip", ["notes.txt"])
+        inner = _write_zip(tmp_path, "inner.zip", ["notes.txt"])
         inner.write_bytes(inner.read_bytes() + b"0" * 128)
-        outer = write_zip_of_files(tmp_path, "outer.zip", [inner])
+        outer = _write_zip_of_files(tmp_path, "outer.zip", [inner])
 
         with pytest.raises(UnscannableArchiveError, match="inner.zip"):
             check_attachments([Attachment.from_path(outer)], provider=GMAIL)
 
     def test_a_member_within_it_is_scanned_as_usual(self, tmp_path):
-        inner = write_zip(tmp_path, "inner.zip", ["setup.exe"])
-        outer = write_zip_of_files(tmp_path, "outer.zip", [inner])
+        inner = _write_zip(tmp_path, "inner.zip", ["setup.exe"])
+        outer = _write_zip_of_files(tmp_path, "outer.zip", [inner])
         with pytest.raises(BlockedAttachmentError, match="setup.exe"):
             check_attachments([Attachment.from_path(outer)], provider=GMAIL)
 
@@ -671,11 +671,11 @@ class TestSniffingATarHeaderReadsOnlyTheHeader:
     def test_it_still_recognises_a_real_tar(self, tmp_path):
         path = tmp_path / "real.tar"
         with tarfile.open(path, "w") as archive:
-            archive.add(write_file(tmp_path, "notes.txt"), "notes.txt")
+            archive.add(_write_file(tmp_path, "notes.txt"), "notes.txt")
         assert _has_tar_magic(path) is True
 
     def test_it_still_declines_a_file_that_is_not_one(self, tmp_path):
-        assert _has_tar_magic(write_file(tmp_path, "notes.tar", b"plain")) is False
+        assert _has_tar_magic(_write_file(tmp_path, "notes.tar", b"plain")) is False
 
 
 class TestTheOtherWaysAnArchiveStopsEarly:
@@ -695,9 +695,9 @@ class TestTheOtherWaysAnArchiveStopsEarly:
         covered "is a zip, cut short", and a truncated report.zip carrying
         setup.exe passed clean while the byte-identical tar was refused.
         """
-        blocked = write_file(tmp_path, "setup.exe", b"MZ")
-        filler = write_file(tmp_path, "big.bin", b"C" * 200_000)
-        full = write_zip_of_files(tmp_path, "full.zip", [blocked, filler])
+        blocked = _write_file(tmp_path, "setup.exe", b"MZ")
+        filler = _write_file(tmp_path, "big.bin", b"C" * 200_000)
+        full = _write_zip_of_files(tmp_path, "full.zip", [blocked, filler])
 
         half = tmp_path / "half.zip"
         whole = full.read_bytes()
@@ -716,9 +716,9 @@ class TestTheOtherWaysAnArchiveStopsEarly:
         walk simply never reached setup.exe, and the scan reported nothing
         blocked.
         """
-        readme = write_file(tmp_path, "readme.txt", b"hello")
-        middle = write_file(tmp_path, "middle.txt", b"world")
-        blocked = write_file(tmp_path, "setup.exe", b"MZ")
+        readme = _write_file(tmp_path, "readme.txt", b"hello")
+        middle = _write_file(tmp_path, "middle.txt", b"world")
+        blocked = _write_file(tmp_path, "setup.exe", b"MZ")
         full = tmp_path / "full.tar"
         with tarfile.open(full, "w", format=tarfile.USTAR_FORMAT) as archive:
             for path in (readme, middle, blocked):
@@ -740,12 +740,12 @@ class TestTheOtherWaysAnArchiveStopsEarly:
 
     def test_a_whole_tar_is_still_walked_to_the_end(self, tmp_path):
         """The end-marker check must not refuse an archive that is simply fine."""
-        readme = write_file(tmp_path, "readme.txt", b"hello")
+        readme = _write_file(tmp_path, "readme.txt", b"hello")
         path = tmp_path / "clean.tar"
         with tarfile.open(path, "w") as archive:
             archive.add(readme, "readme.txt")
         check_attachments([Attachment.from_path(path)], provider=GMAIL)
 
     def test_a_file_that_is_not_a_zip_at_all_still_passes(self, tmp_path):
-        not_really = write_file(tmp_path, "notes.zip", b"plain text")
+        not_really = _write_file(tmp_path, "notes.zip", b"plain text")
         check_attachments([Attachment.from_path(not_really)], provider=GMAIL)

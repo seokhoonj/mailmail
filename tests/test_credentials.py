@@ -40,7 +40,7 @@ def credentials_path(tmp_path, monkeypatch):
     return path
 
 
-def mode_of(path):
+def _mode_of(path):
     return stat.S_IMODE(path.stat().st_mode)
 
 
@@ -141,7 +141,7 @@ class TestEnvironmentOverride:
 class TestFilePermissions:
     def test_new_file_is_owner_only_from_the_moment_it_exists(self, credentials_path):
         store_password(NAVER_ACCOUNT, "app-password")
-        assert mode_of(credentials_path) == CREDENTIALS_FILE_MODE
+        assert _mode_of(credentials_path) == CREDENTIALS_FILE_MODE
 
     def test_loosened_permissions_are_tightened_on_the_next_write(
         self, credentials_path
@@ -151,7 +151,7 @@ class TestFilePermissions:
         store_password(NAVER_ACCOUNT, "app-password")
         credentials_path.chmod(0o644)
         store_password(GMAIL_ACCOUNT, "another-password")
-        assert mode_of(credentials_path) == CREDENTIALS_FILE_MODE
+        assert _mode_of(credentials_path) == CREDENTIALS_FILE_MODE
 
     def test_repairing_the_mode_keeps_the_existing_passwords(self, credentials_path):
         store_password(NAVER_ACCOUNT, "naver-password")
@@ -165,7 +165,7 @@ class TestFilePermissions:
         store_password(GMAIL_ACCOUNT, "gmail-password")
         credentials_path.chmod(0o644)
         delete_password(GMAIL_ACCOUNT)
-        assert mode_of(credentials_path) == CREDENTIALS_FILE_MODE
+        assert _mode_of(credentials_path) == CREDENTIALS_FILE_MODE
 
     def test_world_readable_file_is_refused_rather_than_read(self, credentials_path):
         store_password(NAVER_ACCOUNT, "app-password")
@@ -187,7 +187,7 @@ class TestFilePermissions:
         credentials_path.write_text("{}")
         credentials_path.chmod(0o644)
         store_password(NAVER_ACCOUNT, "app-password")
-        assert mode_of(credentials_path) == CREDENTIALS_FILE_MODE
+        assert _mode_of(credentials_path) == CREDENTIALS_FILE_MODE
 
 
 @posix_only  # the setup chmods; only the value of `os.name` is being faked
