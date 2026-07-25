@@ -111,6 +111,15 @@ class Message:
             raise InvalidMessageError("a message needs at least one recipient")
         if not self.subject.strip():
             raise InvalidMessageError("a message needs a subject")
+        if "\r" in self.subject or "\n" in self.subject:
+            # Same reason the addresses are checked below, plus a sharper one: a
+            # newline in a header value lets a caller inject further headers (a
+            # Bcc, say). email would raise a bare ValueError at header assignment,
+            # outside send()'s documented catch; refuse it here as a MailmailError.
+            raise InvalidMessageError(
+                f"a line break in the subject is not something any server will "
+                f"take: {self.subject!r}"
+            )
         for address in self.recipients:
             if "\r" in address or "\n" in address:
                 # to and cc get this for free when they are written as headers,

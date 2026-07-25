@@ -318,6 +318,20 @@ class TestMalformedFile:
         with pytest.raises(CredentialsError, match="map each email address"):
             resolve_password(NAVER_ACCOUNT)
 
+    def test_a_non_utf8_store_is_a_credentials_error(self, credentials_path):
+        # A store saved in cp949/EUC-KR must surface as CredentialsError, not a bare
+        # UnicodeDecodeError that escapes send()'s documented catch surface.
+        credentials_path.write_bytes('{"me@naver.com": "네이버비밀"}'.encode("cp949"))
+        credentials_path.chmod(CREDENTIALS_FILE_MODE)
+        with pytest.raises(CredentialsError, match="UTF-8"):
+            resolve_password(NAVER_ACCOUNT)
+
+    def test_a_store_path_that_is_a_directory_is_a_credentials_error(self, tmp_path):
+        # A directory makes read_text raise IsADirectoryError (an OSError); it must
+        # surface as CredentialsError, not escape send()'s catch as a bare OSError.
+        with pytest.raises(CredentialsError, match="cannot be read"):
+            store_password(NAVER_ACCOUNT, "pw", path=tmp_path)
+
 
 class TestDefaultLocation:
     def test_credentials_sit_beside_the_config_not_in_the_project(self, monkeypatch):

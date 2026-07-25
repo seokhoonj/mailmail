@@ -99,8 +99,10 @@ def resolve_password(account: SmtpAccount, *, path: Path | None = None) -> str:
         The credentials file is readable by anyone but its owner.
     CredentialsError
         The file exists but is not readable JSON. When `path` is omitted, resolving
-        the default location can also fail here (or with `ConfigError`); see
-        `default_credentials_path`.
+        the default location can also fail; see `default_credentials_path`.
+    ConfigError
+        When `path` is omitted, the `~/.config` home fallback has no home
+        directory; see `default_credentials_path`.
     """
     from_env = _load_password_from_env(account)
     if from_env:
@@ -143,8 +145,11 @@ def store_password(
         Or the existing file is not readable JSON, so the other accounts' entries
         cannot be preserved -- `delete_password` documents the same cause for the
         same read-modify-write, and this half of the pair had left it out. When
-        `path` is omitted, resolving the default location can also raise here (or
-        with `ConfigError`); see `default_credentials_path`.
+        `path` is omitted, resolving the default location can also raise; see
+        `default_credentials_path`.
+    ConfigError
+        When `path` is omitted, the `~/.config` home fallback has no home
+        directory; see `default_credentials_path`.
     """
     password = password.strip()
     if not password:
@@ -170,8 +175,10 @@ def delete_password(account: SmtpAccount, *, path: Path | None = None) -> None:
         The file exists but is not readable JSON, so the other accounts' entries
         cannot be preserved. Worth knowing: revoking a leaked password is exactly
         the call that ends up in a `finally`. When `path` is omitted, resolving the
-        default location can also raise here (or with `ConfigError`); see
-        `default_credentials_path`.
+        default location can also raise; see `default_credentials_path`.
+    ConfigError
+        When `path` is omitted, the `~/.config` home fallback has no home
+        directory; see `default_credentials_path`.
     """
     path = path if path is not None else default_credentials_path()
     password_by_username = _load_password_by_username(path)
@@ -221,6 +228,12 @@ def _load_password_by_username(path: Path) -> dict[str, str]:
         return {}
     try:
         stored = json.loads(path.read_text(encoding="utf-8"))
+    except OSError as err:
+        raise CredentialsError(f"{path} cannot be read: {err}") from err
+    except UnicodeDecodeError as err:
+        # A ValueError, not an OSError, so it needs its own clause -- otherwise a
+        # non-UTF-8 file would escape send()'s documented catch.
+        raise CredentialsError(f"{path} is not valid UTF-8: {err}") from err
     except json.JSONDecodeError as err:
         raise CredentialsError(f"{path} is not valid JSON: {err}") from err
     if not isinstance(stored, dict) or not all(

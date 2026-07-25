@@ -1,5 +1,6 @@
 """Provider attachment rules are enforced locally, before anything is sent."""
 
+import io
 import re
 import tarfile
 import zipfile
@@ -125,6 +126,13 @@ class TestMimeGuessing:
         # attachment path must surface as AttachmentError, not a bare RuntimeError.
         with pytest.raises(AttachmentError, match="names no home directory"):
             Attachment.from_path("~nosuchuser_zzz/report.pdf")
+
+    def test_a_tilde_path_is_expanded(self, tmp_path, monkeypatch):
+        # Positive counterpart: `~` (expanded via $HOME) resolves to a real file.
+        monkeypatch.setenv("HOME", str(tmp_path))
+        (tmp_path / "report.pdf").write_bytes(b"%PDF-1.4 test")
+        attachment = Attachment.from_path("~/report.pdf")
+        assert attachment.path == tmp_path / "report.pdf"
 
 
 class TestBlockedFileTypes:
@@ -404,6 +412,23 @@ class TestUnreadableArchives:
         archive = write_tar(tmp_path, "bundle.txz", ["setup.exe"], mode="w:xz")
         with pytest.raises(BlockedAttachmentError, match="setup.exe"):
             check_attachments([Attachment.from_path(archive)], provider=GMAIL)
+
+    def test_a_corrupt_txz_is_unscannable_not_a_bare_lzma_error(self, tmp_path):
+        # tarfile does not wrap the xz decompressor, so a corrupt .tar.xz raises
+        # lzma.LZMAError mid-scan; it must surface as UnscannableArchiveError, not
+        # escape send()'s documented catch as a bare LZMAError.
+        buf = io.BytesIO()
+        with tarfile.open(fileobj=buf, mode="w:xz") as archive:
+            data = b"A" * 500_000
+            info = tarfile.TarInfo("big.txt")
+            info.size = len(data)
+            archive.addfile(info, io.BytesIO(data))
+        raw = bytearray(buf.getvalue())
+        raw[-30] ^= 0xFF  # corrupt deep in the xz stream, past the open
+        path = tmp_path / "archive.tar.xz"
+        path.write_bytes(raw)
+        with pytest.raises(UnscannableArchiveError):
+            check_attachments([Attachment.from_path(path)], provider=GMAIL)
 
     def test_7z_is_not_looked_inside_and_does_not_pretend_to_be(self, tmp_path):
         # A documented limit, pinned so nobody mistakes silence for protection:

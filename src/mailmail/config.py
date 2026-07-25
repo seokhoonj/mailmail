@@ -98,7 +98,7 @@ class Config:
         ------
         UnknownAccountError
         """
-        wanted = name or self.default_account
+        wanted = self.default_account if name is None else name
         try:
             return self.account_by_name[wanted]
         except KeyError as err:
@@ -176,8 +176,9 @@ def load_config(path: Path | str | None = None) -> Config:
     Raises
     ------
     ConfigError
-        The file is missing, is not valid TOML, or omits something required; or a
-        `~user` cannot be resolved -- in the given path, or, when none is given, in
+        The file is missing, cannot be read (permission or I/O error), is not
+        valid UTF-8, is not valid TOML, or omits something required; or a `~user`
+        cannot be resolved -- in the given path, or, when none is given, in
         `MAILMAIL_CONFIG` or the `~/.config` home fallback.
     UnknownProviderError
         An account names a provider mailmail does not know.
@@ -194,6 +195,12 @@ def load_config(path: Path | str | None = None) -> Config:
             f"no configuration at {path}; create it with an [accounts.<name>] "
             f"table naming a provider and a username"
         ) from err
+    except OSError as err:
+        raise ConfigError(f"cannot read configuration at {path}: {err}") from err
+    except UnicodeDecodeError as err:
+        # A ValueError, not an OSError, so it needs its own clause -- otherwise a
+        # non-UTF-8 config would escape send()'s documented catch.
+        raise ConfigError(f"{path} is not valid UTF-8: {err}") from err
     except tomllib.TOMLDecodeError as err:
         raise ConfigError(f"{path} is not valid TOML: {err}") from err
     return _as_config(document, path=path)
@@ -267,6 +274,12 @@ def _as_account(name: str, table: object, *, path: Path) -> SmtpAccount:
                 f"{path}: [accounts.{name}].{key} must be a string, not "
                 f"{type(table[key]).__name__}"
             )
+    if "\r" in table["username"] or "\n" in table["username"]:
+        # username becomes the From header; a line break would break it, or let a
+        # header be injected. Refuse it here, not later inside the email machinery.
+        raise ConfigError(
+            f"{path}: [accounts.{name}].username has a line break"
+        )
     return SmtpAccount(
         name     = name,
         username = table["username"],

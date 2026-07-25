@@ -100,6 +100,20 @@ class TestAddressesWithLineBreaks:
             )
 
 
+class TestSubjectWithLineBreaks:
+    """A line break in the subject dies here too: it would break the Subject
+    header, or inject another one (a Bcc, say)."""
+
+    def test_a_line_break_in_the_subject_is_refused(self):
+        crafted = "Report\r\nBcc: attacker@example.net"
+        with pytest.raises(InvalidMessageError, match="line break"):
+            make_message(subject=crafted)
+
+    def test_a_bare_newline_in_the_subject_is_refused_too(self):
+        with pytest.raises(InvalidMessageError, match="line break"):
+            make_message(subject="Report\nBcc: attacker@example.net")
+
+
 class TestHeaders:
     def test_from_and_to_are_set_from_the_sender_and_recipients(self):
         mime = make_message(to=["lead@example.com", "analyst@example.com"]).to_mime(

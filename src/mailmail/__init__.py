@@ -165,7 +165,8 @@ def send(
         Every recipient resolved to nobody, the subject is blank, or an address
         contains a line break. Also a `ValueError`.
     AttachmentError
-        An attachment path does not exist or is not a regular file.
+        An attachment path does not exist, is not a regular file, or names an
+        unresolvable `~user`.
     BlockedAttachmentError, UnscannableArchiveError, EncryptedArchiveError
         The provider would reject the attachment -- a blocked file type, or an
         archive that cannot be scanned to the bottom. Nothing was sent.

@@ -298,3 +298,48 @@ def test_config_dir_is_exported_at_the_top_level():
 
     assert mailmail.config_dir is config_dir
     assert "config_dir" in mailmail.__all__
+
+
+def test_a_non_utf8_config_is_a_config_error(tmp_path):
+    # A config saved in cp949/EUC-KR (a realistic mistake) must surface as
+    # ConfigError, not a bare UnicodeDecodeError that escapes send()'s catch.
+    path = tmp_path / "config.toml"
+    path.write_bytes('default_account = "네이버"\n'.encode("cp949"))
+    with pytest.raises(ConfigError, match="not valid UTF-8"):
+        load_config(path)
+
+
+def test_a_tilde_in_an_explicit_path_is_expanded(tmp_path, monkeypatch):
+    # The positive counterpart to the unresolvable-`~user` case: `~` (expanded via
+    # $HOME) resolves an explicit path to a real file that then loads.
+    monkeypatch.setenv("HOME", str(tmp_path))
+    write_config(tmp_path, TWO_ACCOUNT_CONFIG)
+    config = load_config("~/config.toml")
+    assert config.default_account == "naver"
+
+
+def test_resolve_account_does_not_treat_an_empty_name_as_the_default(tmp_path):
+    # `name or default` would redirect an explicit "" to the default; an explicitly
+    # named account must be looked up, not silently swapped for the default.
+    config = load_config(write_config(tmp_path, TWO_ACCOUNT_CONFIG))
+    with pytest.raises(UnknownAccountError, match="''"):
+        config.resolve_account("")
+
+
+def test_a_line_break_in_a_username_is_refused(tmp_path):
+    # username becomes the From header; a newline would break it or inject another.
+    toml = (
+        'default_account = "naver"\n'
+        "[accounts.naver]\n"
+        'provider = "naver"\n'
+        'username = "me\\nBcc: attacker@example.com"\n'
+    )
+    with pytest.raises(ConfigError, match="line break"):
+        load_config(write_config(tmp_path, toml))
+
+
+def test_a_config_path_that_is_a_directory_is_a_config_error(tmp_path):
+    # A directory makes read_text raise IsADirectoryError (an OSError); it must
+    # surface as ConfigError, not escape send()'s catch as a bare OSError.
+    with pytest.raises(ConfigError, match="cannot read configuration"):
+        load_config(tmp_path)

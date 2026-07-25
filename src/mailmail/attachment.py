@@ -11,6 +11,7 @@ an attachment arrives corrupted or inlined into the body instead of attached.
 """
 
 import io
+import lzma
 import mimetypes
 import tarfile
 import zipfile
@@ -49,15 +50,20 @@ _COMPRESSED_SUFFIXES = frozenset({".gz", ".bz2", ".xz"})
 _ZIP_ENCRYPTED_FLAG = 0x1
 
 # Every way the standard library says "I could not read this archive through to
-# the end". Wider than the obvious two: zipfile does not wrap zlib, so a member
-# whose deflate stream is corrupt raises `zlib.error` rather than `BadZipFile`,
-# and an unknown compress_type raises `NotImplementedError`. Each of those used
-# to escape the package untranslated, past a docstring promising they could not.
+# the end". Wider than the obvious two: neither zipfile nor tarfile wraps the
+# decompressor, so a member whose stream is corrupt raises the codec's own error
+# -- `zlib.error` for deflate/gzip, `lzma.LZMAError` for xz -- rather than
+# `BadZipFile`/`ReadError`, and an unknown compress_type raises
+# `NotImplementedError`. `tarfile.CompressionError` covers a `.tbz`/`.txz` on a
+# Python built without bz2/lzma. Each of those used to escape the package
+# untranslated, past a docstring promising they could not.
 _UNREADABLE_MEMBER = (
     zipfile.BadZipFile,
     tarfile.ReadError,
+    tarfile.CompressionError,
     EOFError,
     zlib.error,
+    lzma.LZMAError,
     NotImplementedError,
 )
 
@@ -410,7 +416,7 @@ def _tar_member_names(
         # Opened inside its own try because tarfile.open itself is what raises on
         # a file that is not a tar -- the `with` cannot start until it returns.
         opened = _open_tar(source)
-    except (tarfile.ReadError, EOFError) as err:
+    except (tarfile.ReadError, tarfile.CompressionError, EOFError) as err:
         if _has_tar_magic(source):
             raise UnscannableArchiveError(
                 f"{name} carries a tar header but will not open ({err}); an "
@@ -497,12 +503,10 @@ def _has_tar_magic(source: Path | IO[bytes]) -> bool:
     giving up. The distinction matters: the first is an ordinary file to be
     judged on its suffix; the second could hold anything, and reported nothing.
 
-    Only plain tars are recognised here, which is all that is needed -- a
-    compressed one that stops early fails inside the decompressor, and that is
-    `getmembers`' EOFError, not this.
-
-    Only plain tars are recognised. A compressed one that stops early fails
-    inside the decompressor, which `_tar_member_names` catches at the open.
+    Only plain tars are recognised here, which is all that is needed: a
+    compressed tar that stops early fails inside the decompressor, which
+    `_tar_member_names` translates -- at the open, or during `getmembers` -- not
+    this magic sniff.
     """
     return _head_matches(source, _TAR_MAGIC_OFFSET, _TAR_MAGIC)
 
