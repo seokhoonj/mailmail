@@ -27,6 +27,7 @@ from mailmail.attachment import Attachment
 from mailmail.config import (
     STARTER_CONFIG,
     Config,
+    config_dir,
     default_config_path,
     load_config,
 )
@@ -96,6 +97,7 @@ __all__ = [
     "UnknownProviderError",
     "UnscannableArchiveError",
     "compose_message",
+    "config_dir",
     "default_config_path",
     "default_credentials_path",
     "delete_password",

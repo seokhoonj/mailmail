@@ -127,9 +127,15 @@ class Attachment:
         Raises
         ------
         AttachmentError
-            If the path does not exist or is not a regular file.
+            If the path does not exist, is not a regular file, or names an
+            unresolvable `~user`.
         """
-        path = Path(path).expanduser()
+        try:
+            path = Path(path).expanduser()
+        except RuntimeError as err:
+            raise AttachmentError(
+                f"attachment path {path!r} names no home directory"
+            ) from err
         if not path.exists():
             raise AttachmentError(f"attachment not found: {path}")
         if not path.is_file():

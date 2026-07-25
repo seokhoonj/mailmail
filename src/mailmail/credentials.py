@@ -30,6 +30,7 @@ import stat
 from pathlib import Path
 
 from mailmail.account import SmtpAccount
+from mailmail.config import config_dir
 from mailmail.errors import (
     CredentialsError,
     InsecureCredentialsError,
@@ -57,15 +58,26 @@ CREDENTIALS_FILE_MODE = 0o600
 def default_credentials_path() -> Path:
     """Where mailmail looks for stored passwords.
 
-    `MAILMAIL_CREDENTIALS` wins; otherwise it sits beside the configuration, at
-    `~/.config/mailmail/credentials.json`.
+    `MAILMAIL_CREDENTIALS` wins; otherwise `credentials.json` in `config_dir()`,
+    beside the configuration at `~/.config/mailmail/credentials.json`.
+
+    Raises
+    ------
+    CredentialsError
+        `MAILMAIL_CREDENTIALS` names a path with an unresolvable `~user`.
+    ConfigError
+        No home directory can be found for the `~/.config` fallback (see
+        `config_dir`); the base directory is shared with the configuration.
     """
     override = os.environ.get(CREDENTIALS_PATH_ENV_VAR)
     if override:
-        return Path(override).expanduser()
-    xdg_home = os.environ.get("XDG_CONFIG_HOME")
-    config_home = Path(xdg_home).expanduser() if xdg_home else Path.home() / ".config"
-    return config_home / "mailmail" / "credentials.json"
+        try:
+            return Path(override).expanduser()
+        except RuntimeError as err:
+            raise CredentialsError(
+                f"{CREDENTIALS_PATH_ENV_VAR} {override!r} names no home directory"
+            ) from err
+    return config_dir() / "credentials.json"
 
 
 def resolve_password(account: SmtpAccount, *, path: Path | None = None) -> str:
@@ -86,7 +98,9 @@ def resolve_password(account: SmtpAccount, *, path: Path | None = None) -> str:
     InsecureCredentialsError
         The credentials file is readable by anyone but its owner.
     CredentialsError
-        The file exists but is not readable JSON.
+        The file exists but is not readable JSON. When `path` is omitted, resolving
+        the default location can also fail here (or with `ConfigError`); see
+        `default_credentials_path`.
     """
     from_env = _load_password_from_env(account)
     if from_env:
@@ -128,7 +142,9 @@ def store_password(
         that does have an entry, sending the reader to look for a missing file.
         Or the existing file is not readable JSON, so the other accounts' entries
         cannot be preserved -- `delete_password` documents the same cause for the
-        same read-modify-write, and this half of the pair had left it out.
+        same read-modify-write, and this half of the pair had left it out. When
+        `path` is omitted, resolving the default location can also raise here (or
+        with `ConfigError`); see `default_credentials_path`.
     """
     password = password.strip()
     if not password:
@@ -153,7 +169,9 @@ def delete_password(account: SmtpAccount, *, path: Path | None = None) -> None:
     CredentialsError
         The file exists but is not readable JSON, so the other accounts' entries
         cannot be preserved. Worth knowing: revoking a leaked password is exactly
-        the call that ends up in a `finally`.
+        the call that ends up in a `finally`. When `path` is omitted, resolving the
+        default location can also raise here (or with `ConfigError`); see
+        `default_credentials_path`.
     """
     path = path if path is not None else default_credentials_path()
     password_by_username = _load_password_by_username(path)

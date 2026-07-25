@@ -1,9 +1,18 @@
-"""Reading the accounts and the address book off disk.
+"""The machine-local config directory, and reading the accounts and the
+address book off disk.
 
-The file lives under the XDG config directory rather than beside the code,
-because a mail setup is a property of the machine, not of a checkout -- and
-because a project directory is exactly the kind of place that gets synced to a
-cloud drive or committed by accident.
+`config_dir()` resolves the one directory mailmail keeps on the machine, by hand
+from the env var the XDG spec names -- no `platformdirs` dependency, matching the
+zero-dependency rule. Both files hang off it: `config.toml` here, and the `0600`
+`credentials.json` read by `credentials` (which imports `config_dir` from here, so
+the base is resolved in exactly one place). There is no data or state directory --
+mailmail sends and forgets, writing nothing durable to relocate.
+
+The directory lives outside any checkout because a mail setup is a property of the
+machine, not of a project -- and because a project directory is exactly the kind of
+place that gets synced to a cloud drive or committed by accident. Secrets are not in
+this file; they are in `credentials`. What lives here is the non-secret half: the
+accounts and the address book.
 """
 
 import os
@@ -19,7 +28,13 @@ from mailmail.contacts import AddressBook
 from mailmail.errors import ConfigError, UnknownAccountError
 from mailmail.provider import resolve_provider
 
-__all__ = ["STARTER_CONFIG", "Config", "default_config_path", "load_config"]
+__all__ = [
+    "STARTER_CONFIG",
+    "Config",
+    "config_dir",
+    "default_config_path",
+    "load_config",
+]
 
 CONFIG_PATH_ENV_VAR = "MAILMAIL_CONFIG"
 
@@ -93,18 +108,66 @@ class Config:
             ) from err
 
 
+def config_dir() -> Path:
+    """mailmail's directory on the machine: `config.toml` and the `0600`
+    `credentials.json`.
+
+    `$XDG_CONFIG_HOME/mailmail` when that variable holds an absolute path, else
+    `~/.config/mailmail` -- the same on every OS (the git / ssh / aws convention),
+    not a platform-native dir. A blank, whitespace-only, or *relative*
+    `XDG_CONFIG_HOME` is ignored, per the XDG spec ("a relative path ... must be
+    ignored"): a relative value resolves against the working directory, so a cron
+    run (cwd `/`) and an interactive run (cwd `~`) would otherwise find the config
+    in different places. A leading `~` is expanded first, so `~/config` is honored
+    once it resolves to an absolute path; a value still relative after expansion --
+    including a `~user` that names no such user -- is ignored, not an error. It has
+    no override key of its own -- config cannot name the directory the config file
+    itself lives in; a caller override is per-file (`MAILMAIL_CONFIG`,
+    `MAILMAIL_CREDENTIALS`).
+
+    Raises
+    ------
+    ConfigError
+        No home directory can be found for the `~/.config` fallback (HOME is unset
+        and the user has no passwd entry -- a container run as an arbitrary uid).
+        Raised as a `MailmailError` rather than the bare `RuntimeError` that
+        `Path.home` throws, so it stays inside the catch surface `send` documents.
+    """
+    base = os.environ.get("XDG_CONFIG_HOME", "").strip()
+    if base:
+        try:
+            root = Path(base).expanduser()
+        except RuntimeError:
+            root = Path(base)  # unresolvable `~user`: stays relative, so it falls back
+        if root.is_absolute():
+            return root / "mailmail"
+    try:
+        home = Path.home()
+    except RuntimeError as err:
+        raise ConfigError(
+            "cannot locate ~/.config/mailmail: no home directory (HOME is unset and "
+            "the user has no passwd entry); set XDG_CONFIG_HOME, MAILMAIL_CONFIG, or "
+            "MAILMAIL_CREDENTIALS to an absolute path"
+        ) from err
+    return home / ".config" / "mailmail"
+
+
 def default_config_path() -> Path:
     """Where mailmail looks for its configuration.
 
-    `MAILMAIL_CONFIG` wins; otherwise the XDG location,
+    `MAILMAIL_CONFIG` wins; otherwise `config.toml` in `config_dir()`,
     `~/.config/mailmail/config.toml`.
+
+    Raises
+    ------
+    ConfigError
+        `MAILMAIL_CONFIG` names a path with an unresolvable `~user`, or no home
+        directory can be found for the `~/.config` fallback (see `config_dir`).
     """
     override = os.environ.get(CONFIG_PATH_ENV_VAR)
     if override:
-        return Path(override).expanduser()
-    xdg_home = os.environ.get("XDG_CONFIG_HOME")
-    config_home = Path(xdg_home).expanduser() if xdg_home else Path.home() / ".config"
-    return config_home / "mailmail" / "config.toml"
+        return _expand_named_path(override, source=CONFIG_PATH_ENV_VAR)
+    return config_dir() / "config.toml"
 
 
 def load_config(path: Path | str | None = None) -> Config:
@@ -113,11 +176,17 @@ def load_config(path: Path | str | None = None) -> Config:
     Raises
     ------
     ConfigError
-        The file is missing, is not valid TOML, or omits something required.
+        The file is missing, is not valid TOML, or omits something required; or a
+        `~user` cannot be resolved -- in the given path, or, when none is given, in
+        `MAILMAIL_CONFIG` or the `~/.config` home fallback.
     UnknownProviderError
         An account names a provider mailmail does not know.
     """
-    path = Path(path).expanduser() if path is not None else default_config_path()
+    path = (
+        _expand_named_path(path, source="the config path")
+        if path is not None
+        else default_config_path()
+    )
     try:
         document = tomllib.loads(path.read_text(encoding="utf-8"))
     except FileNotFoundError as err:
@@ -128,6 +197,22 @@ def load_config(path: Path | str | None = None) -> Config:
     except tomllib.TOMLDecodeError as err:
         raise ConfigError(f"{path} is not valid TOML: {err}") from err
     return _as_config(document, path=path)
+
+
+def _expand_named_path(value: str | Path, *, source: str) -> Path:
+    """Expand `~` in a caller-named path, turning an unresolvable `~user` into a
+    ConfigError.
+
+    Unlike `config_dir`, which silently ignores an unusable `XDG_CONFIG_HOME`, a
+    path the caller named explicitly must not be silently dropped -- a typo should
+    surface, not be swallowed. A `~user` that names nobody makes `Path.expanduser`
+    raise RuntimeError, which would bypass the ConfigError catch surface `send`
+    documents; convert it.
+    """
+    try:
+        return Path(value).expanduser()
+    except RuntimeError as err:
+        raise ConfigError(f"{source} {value!r} names no home directory") from err
 
 
 def _as_config(document: dict[str, Any], *, path: Path) -> Config:

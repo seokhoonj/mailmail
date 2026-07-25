@@ -3,6 +3,7 @@
 import json
 import os
 import stat
+from pathlib import Path
 
 import pytest
 
@@ -17,6 +18,7 @@ from mailmail.credentials import (
 from mailmail.errors import (
     CredentialsError,
     InsecureCredentialsError,
+    MailmailError,
     MissingPasswordError,
 )
 from mailmail.provider import GMAIL, NAVER
@@ -329,6 +331,49 @@ class TestDefaultLocation:
         monkeypatch.setenv("MAILMAIL_CREDENTIALS", "/tmp/other.json")
         monkeypatch.setenv("XDG_CONFIG_HOME", "/elsewhere/config")
         assert str(default_credentials_path()) == "/tmp/other.json"
+
+    def test_a_relative_xdg_home_never_places_the_secret_under_the_cwd(
+        self, monkeypatch
+    ):
+        # The secret file is the reason the relative-XDG guard exists: a relative
+        # value would drop credentials.json wherever the process happened to start.
+        monkeypatch.delenv("MAILMAIL_CREDENTIALS", raising=False)
+        monkeypatch.setenv("XDG_CONFIG_HOME", "relative/path")
+        assert default_credentials_path() == (
+            Path.home() / ".config" / "mailmail" / "credentials.json"
+        )
+
+    def test_credentials_override_with_unresolvable_tilde_user_is_credentials_error(
+        self, monkeypatch
+    ):
+        # An explicit MAILMAIL_CREDENTIALS is not silently dropped; the unresolvable
+        # `~user` surfaces as CredentialsError, not a bare RuntimeError.
+        monkeypatch.setenv("MAILMAIL_CREDENTIALS", "~nosuchuser_zzz/credentials.json")
+        with pytest.raises(CredentialsError, match="names no home directory"):
+            default_credentials_path()
+
+    def test_a_tilde_in_the_override_is_expanded(self, monkeypatch):
+        # Positive counterpart: a valid `~/x` override expands under home.
+        monkeypatch.setenv("MAILMAIL_CREDENTIALS", "~/mail/credentials.json")
+        assert default_credentials_path() == (
+            Path.home() / "mail" / "credentials.json"
+        )
+
+    def test_home_resolution_failure_stays_inside_the_mailmail_error_surface(
+        self, monkeypatch
+    ):
+        # The secret path shares config_dir(), so a HOME-less container must not leak
+        # a bare RuntimeError here either -- it surfaces as a MailmailError subclass
+        # (ConfigError) that send()'s documented catch still holds.
+        monkeypatch.delenv("MAILMAIL_CREDENTIALS", raising=False)
+        monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+
+        def no_home():
+            raise RuntimeError("Could not determine home directory")
+
+        monkeypatch.setattr(Path, "home", no_home)
+        with pytest.raises(MailmailError):
+            default_credentials_path()
 
 
 class TestTheEnvironmentPasswordKnowsWhichAccountItIsFor:

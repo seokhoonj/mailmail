@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from mailmail.config import default_config_path, load_config
+from mailmail.config import config_dir, default_config_path, load_config
 from mailmail.errors import ConfigError, UnknownAccountError, UnknownProviderError
 
 TWO_ACCOUNT_CONFIG = """
@@ -219,3 +219,82 @@ class TestDefaultLocation:
         monkeypatch.setenv("MAILMAIL_CONFIG", "/tmp/other.toml")
         monkeypatch.setenv("XDG_CONFIG_HOME", "/elsewhere/config")
         assert str(default_config_path()) == "/tmp/other.toml"
+
+    def test_a_tilde_in_the_override_is_expanded(self, monkeypatch):
+        # The positive counterpart to the unresolvable-`~user` error case: a valid
+        # `~/x` in the override expands to an absolute path under home.
+        monkeypatch.setenv("MAILMAIL_CONFIG", "~/mail/config.toml")
+        assert default_config_path() == Path.home() / "mail" / "config.toml"
+
+
+class TestConfigDir:
+    def test_falls_back_to_dot_config(self, monkeypatch):
+        monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+        assert config_dir() == Path.home() / ".config" / "mailmail"
+
+    def test_uses_absolute_xdg_home(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+        assert config_dir() == tmp_path / "mailmail"
+
+    def test_expands_a_tilde_in_xdg_home(self, monkeypatch):
+        monkeypatch.setenv("XDG_CONFIG_HOME", "~/somewhere")
+        assert config_dir() == Path.home() / "somewhere" / "mailmail"
+
+    def test_ignores_a_relative_xdg_home(self, monkeypatch):
+        # The XDG spec requires a relative value be ignored; using it would resolve
+        # against the working directory and split a cron run from an interactive one.
+        monkeypatch.setenv("XDG_CONFIG_HOME", "relative/path")
+        assert config_dir() == Path.home() / ".config" / "mailmail"
+
+    def test_ignores_a_blank_xdg_home(self, monkeypatch):
+        monkeypatch.setenv("XDG_CONFIG_HOME", "   ")
+        assert config_dir() == Path.home() / ".config" / "mailmail"
+
+    def test_ignores_an_empty_xdg_home(self, monkeypatch):
+        monkeypatch.setenv("XDG_CONFIG_HOME", "")
+        assert config_dir() == Path.home() / ".config" / "mailmail"
+
+    def test_ignores_an_unresolvable_tilde_user_without_raising(self, monkeypatch):
+        # `~nouser/x` cannot be expanded (no such user), which makes Path.expanduser
+        # raise RuntimeError; the value stays relative, so it is ignored, not fatal.
+        monkeypatch.setenv("XDG_CONFIG_HOME", "~nosuchuser_zzz/config")
+        assert config_dir() == Path.home() / ".config" / "mailmail"
+
+    def test_home_resolution_failure_is_a_config_error_not_runtime_error(
+        self, monkeypatch
+    ):
+        # HOME unset AND no passwd entry (a container run as an arbitrary uid) makes
+        # Path.home() raise RuntimeError. config_dir converts it to ConfigError so no
+        # bare RuntimeError escapes send()'s documented MailmailError catch surface.
+        monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+
+        def no_home():
+            raise RuntimeError("Could not determine home directory")
+
+        monkeypatch.setattr(Path, "home", no_home)
+        with pytest.raises(ConfigError, match="no home directory"):
+            config_dir()
+
+
+class TestUnresolvableTildeUserInANamedPath:
+    def test_config_override_with_unresolvable_tilde_user_is_config_error(
+        self, monkeypatch
+    ):
+        # An explicit MAILMAIL_CONFIG is not silently dropped like a bad XDG value;
+        # the unresolvable `~user` surfaces as ConfigError, not a bare RuntimeError.
+        monkeypatch.setenv("MAILMAIL_CONFIG", "~nosuchuser_zzz/config.toml")
+        with pytest.raises(ConfigError, match="names no home directory"):
+            load_config()
+
+    def test_explicit_path_with_unresolvable_tilde_user_is_config_error(self):
+        with pytest.raises(ConfigError, match="names no home directory"):
+            load_config("~nosuchuser_zzz/config.toml")
+
+
+def test_config_dir_is_exported_at_the_top_level():
+    # config_dir is public: a caller resolves the directory the same way mailmail
+    # does. Guard the re-export so dropping the import or the __all__ entry fails.
+    import mailmail
+
+    assert mailmail.config_dir is config_dir
+    assert "config_dir" in mailmail.__all__
