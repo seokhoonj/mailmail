@@ -157,8 +157,9 @@ def send(
     must catch every way a send can fail writes
     `except (MailmailError, smtplib.SMTPException, OSError)`.
 
-    ConfigError, UnknownAccountError
-        The configuration is missing or does not define the account.
+    ConfigError, UnknownAccountError, UnknownProviderError
+        The configuration is missing, names a provider mailmail does not know, or
+        does not define the account.
     UnknownContactError, ContactCycleError
         A recipient is neither an address nor a resolvable alias.
     InvalidMessageError
@@ -240,8 +241,9 @@ def send_bulk(
     These are raised before the connection opens, so nothing is sent -- one bad
     row stops the whole batch:
 
-    ConfigError, UnknownAccountError
-        The configuration is missing or does not define the account.
+    ConfigError, UnknownAccountError, UnknownProviderError
+        The configuration is missing, names a provider mailmail does not know, or
+        does not define the account.
     UnknownContactError, ContactCycleError, InvalidMessageError
         A row's recipient is not resolvable, or a row has no recipient, a blank
         subject, a line break in the subject, or an unsendable body/HTML.
@@ -258,7 +260,8 @@ def send_bulk(
 
     MissingPasswordError, InsecureCredentialsError, CredentialsError
         No password is stored for the account, the credentials file is readable
-        by someone other than its owner, or it is not readable JSON.
+        by someone other than its owner, or it is not readable JSON. `ConfigError`
+        here too, when the default credentials location has no home directory.
     AuthenticationFailedError
         The server rejected the password.
 

@@ -255,8 +255,8 @@ def compose_message(mail: Mail, *, address_book: AddressBook) -> Message:
     UnknownContactError, ContactCycleError
         A recipient is neither an address nor a resolvable alias.
     AttachmentError
-        An attachment path is missing, is not a regular file, or has a name that
-        is not valid UTF-8.
+        An attachment path is missing, is not a regular file, names an
+        unresolvable `~user`, or has a name that is not valid UTF-8.
     InvalidMessageError
         The result has no recipient, a blank subject, a line break in the subject
         or an address, or an unsendable body/HTML.
@@ -298,10 +298,21 @@ def _as_address_tuple(value: str | Iterable[str]) -> tuple[str, ...]:
 
 
 def _domain_of(address: str) -> str:
-    """The domain half of an address, for stamping the Message-ID.
+    """The ASCII domain half of an address, for stamping the Message-ID.
 
     Left to itself `make_msgid` uses the local hostname, which leaks the sending
     machine's name into every message.
+
+    IDNA-encoded because a Message-ID must be ASCII (RFC 5322): an
+    internationalized domain (`도메인.한국`) left raw makes the header raise a bare
+    `UnicodeEncodeError` at flatten -- outside send()'s catch -- on every send. A
+    domain that will not IDNA-encode falls back to the same `localhost` as an
+    address with no domain at all.
     """
     _local, _, domain = address.rpartition("@")
-    return domain or "localhost"
+    if not domain:
+        return "localhost"
+    try:
+        return domain.encode("idna").decode("ascii")
+    except (UnicodeError, ValueError):
+        return "localhost"

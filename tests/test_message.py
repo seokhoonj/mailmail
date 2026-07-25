@@ -181,6 +181,14 @@ class TestKoreanText:
         mime = _make_message(body="첨부 파일 확인 부탁드립니다.").to_mime(sender=SENDER)
         assert mime.get_body().get_content().strip() == "첨부 파일 확인 부탁드립니다."
 
+    def test_an_internationalized_sender_domain_makes_an_ascii_message_id(self):
+        # A Message-ID must be ASCII (RFC 5322); an IDN sender domain left raw
+        # raised a bare UnicodeEncodeError at flatten. It is punycode-encoded.
+        mime = _make_message().to_mime(sender="user@도메인.한국")
+        message_id = mime["Message-ID"]
+        assert message_id.isascii()
+        assert "xn--" in message_id
+
 
 class TestParts:
     def test_plain_body_alone_is_not_multipart(self):

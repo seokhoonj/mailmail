@@ -11,11 +11,13 @@ import smtplib
 import pytest
 
 from mailmail import (
+    AuthenticationFailedError,
     BlockedAttachmentError,
     Config,
     InvalidMessageError,
     Mail,
     MessageTooLargeError,
+    MissingPasswordError,
     SmtpAccount,
     UnknownContactError,
     send_bulk,
@@ -264,3 +266,21 @@ class TestCcAndBccPerRow:
             "audit@example.com",
         ]
         assert "audit@example.com" not in sent.payload.decode()
+
+
+class TestTheBatchFailsAtLoginBeforeAnythingIsSent:
+    """The connection opens before the first message, so a login-time failure
+    stops the whole batch with nothing sent -- what send_bulk documents."""
+
+    def test_a_missing_password_stops_the_batch(self, fake_smtp):
+        other = SmtpAccount(name="gmail", username="me@gmail.com", provider=GMAIL)
+        config = _make_config(account_by_name={"naver": ACCOUNT, "gmail": other})
+        with pytest.raises(MissingPasswordError):
+            send_bulk([_make_mail()], account="gmail", config=config)
+        assert fake_smtp.sent_messages == []
+
+    def test_a_rejected_login_stops_the_batch(self, fake_smtp):
+        fake_smtp.rejects_login = True
+        with pytest.raises(AuthenticationFailedError):
+            send_bulk([_make_mail()], config=_make_config())
+        assert fake_smtp.sent_messages == []

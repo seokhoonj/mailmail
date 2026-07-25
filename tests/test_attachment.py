@@ -447,6 +447,10 @@ class TestUnreadableArchives:
         with pytest.raises(UnscannableArchiveError):
             check_attachments([Attachment.from_path(path)], provider=GMAIL)
 
+    @pytest.mark.skipif(
+        os.name != "posix",
+        reason="only POSIX filesystems accept a non-UTF-8 byte in a filename",
+    )
     def test_a_non_utf8_filename_is_an_attachment_error(self, tmp_path):
         # A file whose on-disk name is not valid UTF-8 (routine on Linux) cannot go
         # in a mail header; refuse it as AttachmentError, not a bare UnicodeEncode
