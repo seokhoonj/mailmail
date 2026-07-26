@@ -408,6 +408,7 @@ New-Item -ItemType SymbolicLink -Path "$HOME\.claude\skills\send" `
 | `UnknownContactError` | 주소록에 없는 이름이다. 아는 이름들을 함께 알려준다 |
 | `BlockedAttachmentError` | 메일 서비스가 막는 파일이다. 링크로 공유한다 |
 | `MessageTooLargeError` | 첨부가 한도를 넘는다 |
+| `TooManyRecipientsError` | 한 통에 수신자가 100명을 넘는다. 여러 번에 나눠 보낸다 |
 | `AuthenticationFailedError` | 로그인이 거부됐다. 앱 비밀번호가 맞는지, NAVER라면 SMTP가 켜져 있는지 |
 
 ## 개발

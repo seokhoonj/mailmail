@@ -443,6 +443,7 @@ The exception message states, in words, what is wrong and how to fix it.
 | `UnknownContactError` | A name that isn't in the address book. It lists the names it knows |
 | `BlockedAttachmentError` | A file the mail service blocks. Share it as a link |
 | `MessageTooLargeError` | The attachments are over the limit |
+| `TooManyRecipientsError` | More than 100 recipients in one message. Split them across several sends |
 | `AuthenticationFailedError` | The login was refused. Check the app password is right, and for Naver that SMTP is on |
 
 ## Development
