@@ -181,7 +181,8 @@ class Message:
                 mime["Cc"] = ", ".join(self.cc)
         except Exception as err:
             raise InvalidMessageError(
-                f"an address will not go in a mail header: {err}"
+                f"an address will not go in a mail header ({err}); check the "
+                f"sending account's address {sender!r} and the recipients"
             ) from err
         # Bcc is deliberately absent: writing the header would show every blind
         # recipient to all the others. The addresses reach the server through the
@@ -268,10 +269,12 @@ def compose_message(mail: Mail, *, address_book: AddressBook) -> Message:
         A recipient is neither an address nor a resolvable alias.
     AttachmentError
         An attachment path is missing, is not a regular file, names an
-        unresolvable `~user`, or has a name that is not valid UTF-8.
+        unresolvable `~user`, or has a name that is not valid UTF-8 or contains a
+        line break.
     InvalidMessageError
         The result has no recipient, a blank subject, a line break in the subject
-        or an address, or an unsendable body/HTML.
+        or an address, an unsendable body/HTML, or an address that will not parse
+        into a mail header.
     """
     return Message.compose(
         subject     = mail.subject,

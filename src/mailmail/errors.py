@@ -36,6 +36,7 @@ __all__ = [
     "MessageTooLargeError",
     "MissingPasswordError",
     "RecipientRefusedError",
+    "TooManyRecipientsError",
     "UnknownAccountError",
     "UnknownContactError",
     "UnknownProviderError",

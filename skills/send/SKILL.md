@@ -182,6 +182,7 @@ only the **action to add** per exception.
 | `EncryptedArchiveError` | Ask whether to remove the archive password or send a link. |
 | `UnscannableArchiveError` | The archive is too deep or too large to scan to the bottom. Ask whether to unpack one layer or send a link. (`EncryptedArchiveError` is one kind of this, so catch this name to catch both.) |
 | `MessageTooLargeError` | Ask whether to shrink the attachments. |
+| `TooManyRecipientsError` | The message names more than the provider's per-message cap (100 for Gmail and Naver). Ask whether to split the recipients into several sends. |
 | `UnknownContactError` | The exception lists the aliases it knows, so let the user pick one or give an address directly. |
 | `ContactCycleError` | None — the exception draws the loop. |
 | `InvalidMessageError` | A recipient or the subject is empty. Get it from the user and reassemble. |

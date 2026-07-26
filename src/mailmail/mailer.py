@@ -277,14 +277,19 @@ def _screen_recipients(message: Message, provider: MailProvider) -> None:
 
     Gmail and Naver both cap one SMTP message at 100 recipients; the server counts
     them during the envelope and refuses the whole message past the cap, so this
-    fails at the call site before the connection opens instead.
+    fails at the call site before the connection opens instead. The count is by
+    envelope slot -- a `to` + `cc` + `bcc` position -- so an address that repeats
+    counts each time, exactly as the server tallies its `RCPT TO` commands. A
+    provider whose limit is unknown (`max_recipients is None`) is not screened.
     """
-    count = len(message.recipients)
-    if count > provider.max_recipients:
+    if provider.max_recipients is None:
+        return
+    recipient_count = len(message.recipients)
+    if recipient_count > provider.max_recipients:
         raise TooManyRecipientsError(
-            f"a message names {count} recipients, but {provider.name} accepts at "
-            f"most {provider.max_recipients} in one send (to + cc + bcc); split it "
-            f"into smaller messages"
+            f"a message names {recipient_count} recipients, but {provider.name} "
+            f"accepts at most {provider.max_recipients} in one send (to + cc + "
+            f"bcc); split it into smaller messages"
         )
 
 

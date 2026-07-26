@@ -19,6 +19,7 @@ from mailmail import (
     MessageTooLargeError,
     MissingPasswordError,
     SmtpAccount,
+    TooManyRecipientsError,
     UnknownContactError,
     send_bulk,
 )
@@ -194,6 +195,14 @@ class TestABadRowStopsTheBatchBeforeAnythingIsSent:
         with pytest.raises(InvalidMessageError):
             send_bulk(mails, config=_make_config())
         assert fake_smtp.connections == []
+
+    def test_a_row_over_the_recipient_cap_sends_nothing(self, fake_smtp):
+        over_cap = [f"user{i}@example.com" for i in range(101)]  # over the 100 cap
+        mails = [_make_mail(to="a@example.com"), _make_mail(to=over_cap)]
+        with pytest.raises(TooManyRecipientsError):
+            send_bulk(mails, config=_make_config())
+        assert fake_smtp.connections == []
+        assert fake_smtp.sent_messages == []
 
 
 class TestFailuresThatOnlyAppearMidBatch:

@@ -166,11 +166,13 @@ def send(
         A recipient is neither an address nor a resolvable alias.
     InvalidMessageError
         Every recipient resolved to nobody; the subject is blank; the subject or
-        an address contains a line break; or the body or HTML carries a character
-        no server can send (an unpaired surrogate). Also a `ValueError`.
+        an address contains a line break; the body or HTML carries a character no
+        server can send (an unpaired surrogate); or an address will not parse into
+        a mail header. Also a `ValueError`.
     AttachmentError
         An attachment path does not exist, is not a regular file, names an
-        unresolvable `~user`, or has a name that is not valid UTF-8.
+        unresolvable `~user`, or has a name that is not valid UTF-8 or contains a
+        line break.
     BlockedAttachmentError, UnscannableArchiveError, EncryptedArchiveError
         The provider would reject the attachment -- a blocked file type, or an
         archive that cannot be scanned to the bottom. Nothing was sent.
@@ -254,7 +256,8 @@ def send_bulk(
         subject, a line break in the subject, or an unsendable body/HTML.
     AttachmentError
         A row's attachment path does not exist, is not a regular file, names an
-        unresolvable `~user`, or has a name that is not valid UTF-8.
+        unresolvable `~user`, or has a name that is not valid UTF-8 or contains a
+        line break.
     BlockedAttachmentError, UnscannableArchiveError, EncryptedArchiveError
         A row's attachment would be rejected by the provider.
     MessageTooLargeError
@@ -279,6 +282,10 @@ def send_bulk(
     MessageTooLargeError
         A row crosses the size limit only once fully assembled; the up-front
         screen weighs attachments alone, not the finished MIME.
+    InvalidMessageError
+        A row holds an address that is line-break-free (so it passed the up-front
+        checks) but will not parse into a mail header; it fails only at assembly,
+        mid-batch. Retrying the whole batch would re-send the rows already out.
     smtplib.SMTPException, OSError
         The session or the network dropped partway through the batch.
 

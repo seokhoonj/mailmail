@@ -114,10 +114,29 @@ class Attachment:
     size_bytes: int
 
     def __post_init__(self) -> None:
-        # `from_path` always produces a well-formed type, but the class is public
-        # and freely constructible: `mime_type="pdf"` used to go out as
-        # `Content-Type: pdf/` -- a malformed header reaching the server through
-        # the one package that promises to catch such things first.
+        # The class is public and freely constructible, so every invariant a
+        # header depends on is enforced here, not only in `from_path`. The name
+        # becomes the Content-Disposition filename: on Linux it can hold a
+        # non-UTF-8 byte (a lone surrogate no charset can carry) or a line break
+        # (which would break -- or inject -- the header), both legal on disk and
+        # neither carryable; the email layer would raise a bare error deep in
+        # assembly, so refuse them here.
+        try:
+            self.path.name.encode("utf-8")
+        except UnicodeEncodeError as err:
+            raise AttachmentError(
+                f"attachment name is not valid UTF-8, so it cannot go in a mail "
+                f"header: {self.path.name!r}; rename the file before attaching it"
+            ) from err
+        if "\r" in self.path.name or "\n" in self.path.name:
+            raise AttachmentError(
+                f"a line break in the attachment name is not something any mail "
+                f"header will take: {self.path.name!r}; rename the file before "
+                f"attaching it"
+            )
+        # `mime_type="pdf"` used to go out as `Content-Type: pdf/` -- a malformed
+        # header reaching the server through the one package that promises to catch
+        # such things first.
         maintype, slash, subtype = self.mime_type.partition("/")
         if not (maintype and slash and subtype):
             raise AttachmentError(
@@ -147,26 +166,8 @@ class Attachment:
             raise AttachmentError(f"attachment not found: {path}")
         if not path.is_file():
             raise AttachmentError(f"attachment is not a regular file: {path}")
-        try:
-            path.name.encode("utf-8")
-        except UnicodeEncodeError as err:
-            # A filename with a non-UTF-8 byte (routine on Linux) decodes to a lone
-            # surrogate that no MIME-header charset can carry; left alone it raises a
-            # bare UnicodeEncodeError deep in to_mime, outside send()'s catch. Refuse
-            # it here, at the boundary, as an AttachmentError.
-            raise AttachmentError(
-                f"attachment name is not valid UTF-8, so it cannot go in a mail "
-                f"header: {path.name!r}; rename the file before attaching it"
-            ) from err
-        if "\r" in path.name or "\n" in path.name:
-            # The name becomes the Content-Disposition filename; a line break would
-            # break -- or inject -- that header (the same class the subject and
-            # address guards close). email raises a bare ValueError at assembly;
-            # refuse it here as an AttachmentError.
-            raise AttachmentError(
-                f"a line break in the attachment name is not something any mail "
-                f"header will take: {path.name!r}; rename the file before attaching it"
-            )
+        # The name is validated in __post_init__, so cls(...) below enforces the
+        # UTF-8 and line-break rules for this path too.
         guessed, _encoding = mimetypes.guess_type(path.name)
         return cls(
             path       = path,

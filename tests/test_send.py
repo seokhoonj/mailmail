@@ -161,6 +161,7 @@ class TestTheProviderRecipientCap:
         recipients = [f"user{i}@example.com" for i in range(100)]
         send(to=recipients, subject="s", body="b", config=_make_config())
         assert len(fake_smtp.sent_messages) == 1
+        assert fake_smtp.sent_messages[0].recipients == recipients
 
 
 class TestGuardedInputsFailThroughSendAsAMailmailError:

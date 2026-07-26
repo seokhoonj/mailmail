@@ -53,10 +53,11 @@ class MailProvider:
         right enough to fail fast before connecting.
     max_recipients
         Most recipients (`to` + `cc` + `bcc` combined) the server accepts in one
-        message. The server counts them during the envelope and rejects the whole
-        message once past the cap; screening here fails at the call site instead.
-        Not advertised by the server, so unlike `max_message_bytes` there is no
-        live value to prefer.
+        message, or `None` when the limit is unknown and no screen should run. The
+        server counts them during the envelope and rejects the whole message once
+        past the cap; screening here fails at the call site instead. Not advertised
+        by the server, so unlike `max_message_bytes` there is no live value to
+        prefer. Defaults to `None` so a custom provider need not supply it.
     login_requirements
         What the service demands before it will accept an SMTP login, in the
         words a rejected user needs to read. Both services here reject the
@@ -70,7 +71,7 @@ class MailProvider:
     security: SmtpSecurity
     blocked_extensions: frozenset[str]
     max_message_bytes: int
-    max_recipients: int
+    max_recipients: int | None = None
     login_requirements: str
 
 
