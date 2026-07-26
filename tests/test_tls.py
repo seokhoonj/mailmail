@@ -123,6 +123,7 @@ def _account_pointed_at(port) -> SmtpAccount:
         smtp_port         = port,
         security          = "starttls",
         max_message_bytes = 35_882_577,
+        max_recipients    = 100,
         blocked_extensions = frozenset(),
         login_requirements = "n/a",
     )

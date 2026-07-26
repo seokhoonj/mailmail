@@ -19,8 +19,13 @@ from typing import Self
 from mailmail.account import SmtpAccount
 from mailmail.attachment import check_message_size, screen_attachments
 from mailmail.credentials import resolve_password
-from mailmail.errors import AuthenticationFailedError, RecipientRefusedError
+from mailmail.errors import (
+    AuthenticationFailedError,
+    RecipientRefusedError,
+    TooManyRecipientsError,
+)
 from mailmail.message import Message
+from mailmail.provider import MailProvider
 
 __all__ = ["DEFAULT_TIMEOUT_SECONDS", "Mailer", "SendReceipt"]
 
@@ -131,6 +136,8 @@ class Mailer:
             an archive that cannot be scanned to the bottom.
         MessageTooLargeError
             The message is over the server's limit.
+        TooManyRecipientsError
+            The message names more recipients than the provider takes in one send.
         MissingPasswordError, InsecureCredentialsError, CredentialsError
             No password is stored, the credentials file is readable by others, or
             it is not readable JSON.
@@ -152,6 +159,7 @@ class Mailer:
             them would say less than they already do.
         """
         screen_attachments(message.attachments, provider=self._account.provider)
+        _screen_recipients(message, self._account.provider)
         receipt = self._transmit(message)
         if not receipt.accepted:
             refused = ", ".join(sorted(receipt.reason_by_refused_recipient))
@@ -179,6 +187,7 @@ class Mailer:
             return []
         for message in messages:
             screen_attachments(message.attachments, provider=self._account.provider)
+            _screen_recipients(message, self._account.provider)
         if self._smtp is not None:
             return [self._transmit(message) for message in messages]
         with self:
@@ -260,6 +269,22 @@ class Mailer:
             )
         return smtplib.SMTP(
             provider.smtp_host, provider.smtp_port, timeout=self._timeout_seconds
+        )
+
+
+def _screen_recipients(message: Message, provider: MailProvider) -> None:
+    """Raise if a message names more recipients than the provider takes at once.
+
+    Gmail and Naver both cap one SMTP message at 100 recipients; the server counts
+    them during the envelope and refuses the whole message past the cap, so this
+    fails at the call site before the connection opens instead.
+    """
+    count = len(message.recipients)
+    if count > provider.max_recipients:
+        raise TooManyRecipientsError(
+            f"a message names {count} recipients, but {provider.name} accepts at "
+            f"most {provider.max_recipients} in one send (to + cc + bcc); split it "
+            f"into smaller messages"
         )
 
 

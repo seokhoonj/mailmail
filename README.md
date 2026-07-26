@@ -7,8 +7,8 @@
 
 Send mail from Python through Gmail or Naver SMTP — one message, or a personalised
 batch to a whole list — with the provider's own rules checked before anything
-leaves your machine: blocked file types, the real size limit, the app-password
-login both services now demand. Attachments, an HTML body, cc/bcc, and an address
+leaves your machine: blocked file types, the real size limit, the 100-recipient
+cap, the app-password login both services now demand. Attachments, an HTML body, cc/bcc, and an address
 book so you can call the people you write often by name.
 
 **English** | [한국어](README.ko.md)
@@ -52,7 +52,8 @@ else — it pulls in no other libraries.
 
 One `send()` reads the config, picks the account, resolves aliases and builds the
 message, refuses anything the provider would bounce — a blocked file type, a
-message over the size limit — before the connection is ever opened, and returns
+message over the size limit, more than 100 recipients — before the connection is
+ever opened, and returns
 the outcome as a `SendReceipt`.
 
 ```mermaid
@@ -60,7 +61,7 @@ flowchart TB
     caller["send(to='lead', subject=..., body=...)"] --> cfg["load_config()<br/>config.toml"]
     cfg --> acct["resolve_account()<br/>SmtpAccount + provider"]
     acct --> compose["compose_message()<br/>resolve aliases, attach files"]
-    compose --> screen{"can the provider carry it?<br/>blocked type, size limit"}
+    compose --> screen{"can the provider carry it?<br/>blocked type, size limit, recipient cap"}
     screen -->|"no"| refuse["raise<br/>(before the connection opens)"]
     screen -->|"yes"| connect["Mailer<br/>STARTTLS + app-password login"]
     connect --> server(("Gmail<br/>Naver"))

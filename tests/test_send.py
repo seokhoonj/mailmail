@@ -20,6 +20,7 @@ from mailmail import (
     InvalidMessageError,
     MailmailError,
     SmtpAccount,
+    TooManyRecipientsError,
     send,
 )
 from mailmail.credentials import store_password
@@ -144,6 +145,22 @@ class TestAMessageWithNobodyToSendTo:
         with pytest.raises(TypeError, match="to"):
             send(subject="s", body="b", config=_make_config())  # type: ignore[call-arg]
         assert fake_smtp.sent_messages == []
+
+
+class TestTheProviderRecipientCap:
+    """Naver and Gmail cap one message at 100 recipients; refuse past it locally."""
+
+    def test_more_than_the_cap_fails_before_connecting(self, fake_smtp):
+        recipients = [f"user{i}@example.com" for i in range(101)]  # over the 100 cap
+        with pytest.raises(TooManyRecipientsError):
+            send(to=recipients, subject="s", body="b", config=_make_config())
+        assert fake_smtp.sent_messages == []
+        assert fake_smtp.connections == []
+
+    def test_exactly_the_cap_is_allowed(self, fake_smtp):
+        recipients = [f"user{i}@example.com" for i in range(100)]
+        send(to=recipients, subject="s", body="b", config=_make_config())
+        assert len(fake_smtp.sent_messages) == 1
 
 
 class TestGuardedInputsFailThroughSendAsAMailmailError:

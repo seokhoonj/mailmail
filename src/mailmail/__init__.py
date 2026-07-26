@@ -54,6 +54,7 @@ from mailmail.errors import (
     MessageTooLargeError,
     MissingPasswordError,
     RecipientRefusedError,
+    TooManyRecipientsError,
     UnknownAccountError,
     UnknownContactError,
     UnknownProviderError,
@@ -92,6 +93,7 @@ __all__ = [
     "SendReceipt",
     "SmtpAccount",
     "SmtpSecurity",
+    "TooManyRecipientsError",
     "UnknownAccountError",
     "UnknownContactError",
     "UnknownProviderError",
@@ -174,6 +176,9 @@ def send(
         archive that cannot be scanned to the bottom. Nothing was sent.
     MessageTooLargeError
         The message is over the server's limit; nothing was sent.
+    TooManyRecipientsError
+        The message names more recipients (to + cc + bcc) than the provider
+        accepts in one send; nothing was sent.
     MissingPasswordError, InsecureCredentialsError, CredentialsError
         No password is stored for the account, the credentials file is readable
         by someone other than its owner, or it is not readable JSON.
@@ -254,6 +259,8 @@ def send_bulk(
         A row's attachment would be rejected by the provider.
     MessageTooLargeError
         A row's attachments already exceed the size limit.
+    TooManyRecipientsError
+        A row names more recipients than the provider takes in one send.
 
     Then, when the connection opens -- before the first message goes out, so
     still nothing is sent:

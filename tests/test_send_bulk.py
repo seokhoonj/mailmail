@@ -64,6 +64,7 @@ SMALL_LIMIT_PROVIDER = MailProvider(
     security           = "starttls",
     blocked_extensions = NAVER.blocked_extensions,
     max_message_bytes  = 2000,
+    max_recipients     = NAVER.max_recipients,
     login_requirements = NAVER.login_requirements,
 )
 SMALL_LIMIT_ACCOUNT = SmtpAccount(

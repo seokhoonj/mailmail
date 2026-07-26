@@ -51,6 +51,12 @@ class MailProvider:
         rather than the smaller figure the web UI quotes. `Mailer` re-reads the
         live value at send time and prefers it, so this constant only has to be
         right enough to fail fast before connecting.
+    max_recipients
+        Most recipients (`to` + `cc` + `bcc` combined) the server accepts in one
+        message. The server counts them during the envelope and rejects the whole
+        message once past the cap; screening here fails at the call site instead.
+        Not advertised by the server, so unlike `max_message_bytes` there is no
+        live value to prefer.
     login_requirements
         What the service demands before it will accept an SMTP login, in the
         words a rejected user needs to read. Both services here reject the
@@ -64,6 +70,7 @@ class MailProvider:
     security: SmtpSecurity
     blocked_extensions: frozenset[str]
     max_message_bytes: int
+    max_recipients: int
     login_requirements: str
 
 
@@ -74,6 +81,7 @@ GMAIL = MailProvider(
     security           = "starttls",
     blocked_extensions = EXECUTABLE_EXTENSIONS,
     max_message_bytes  = 35_882_577,  # SIZE advertised by smtp.gmail.com
+    max_recipients     = 100,  # to + cc + bcc, per message, over SMTP
     login_requirements = (
         "Gmail rejects the account login password over SMTP. Turn on 2-step "
         "verification, then generate a 16-character app password at "
@@ -89,6 +97,7 @@ NAVER = MailProvider(
     security           = "starttls",
     blocked_extensions = EXECUTABLE_EXTENSIONS,
     max_message_bytes  = 39_845_888,  # SIZE advertised by smtp.naver.com
+    max_recipients     = 100,  # to + cc + bcc, per message
     # Naver tightened this on 2025-06-24: the account login password used to
     # work over SMTP and no longer does, so credentials that worked before that
     # date fail with a bare "535 Username and Password not accepted".

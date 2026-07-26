@@ -116,6 +116,15 @@ class MessageTooLargeError(MailmailError):
     """The encoded message exceeds what the provider's SMTP server accepts."""
 
 
+class TooManyRecipientsError(MailmailError):
+    """One message names more recipients than the provider accepts in a send.
+
+    Gmail and Naver both cap a single SMTP message at 100 recipients (`to`, `cc`,
+    and `bcc` combined). Refused here, before the connection opens, rather than as
+    a server rejection partway through the envelope.
+    """
+
+
 class CredentialsError(MailmailError):
     """Base class for problems with the stored passwords."""
 

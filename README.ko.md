@@ -42,7 +42,7 @@ Windows·macOS·Linux에서 동작한다. 설치되는 것은 이 패키지뿐�
 ## 구조 한눈에
 
 `send()` 한 번은 설정을 읽고, 계정을 고르고, 별칭을 풀어 메시지를 만들고, provider가
-반송할 것 — 차단된 파일 형식, 크기 한도를 넘는 메일 — 은 연결을 열기 전에 막고, 결과를
+반송할 것 — 차단된 파일 형식, 크기 한도를 넘는 메일, 수신자 100명 초과 — 은 연결을 열기 전에 막고, 결과를
 `SendReceipt`로 돌려준다.
 
 ```mermaid
@@ -50,7 +50,7 @@ flowchart TB
     caller["send(to='lead', subject=..., body=...)"] --> cfg["load_config()<br/>config.toml"]
     cfg --> acct["resolve_account()<br/>SmtpAccount + provider"]
     acct --> compose["compose_message()<br/>별칭 풀기, 파일 첨부"]
-    compose --> screen{"provider가 실을 수 있나?<br/>차단 형식, 크기 한도"}
+    compose --> screen{"provider가 실을 수 있나?<br/>차단 형식, 크기 한도, 수신자 한도"}
     screen -->|"불가"| refuse["raise<br/>(연결을 열기 전에)"]
     screen -->|"가능"| connect["Mailer<br/>STARTTLS + 앱 비밀번호 로그인"]
     connect --> server(("Gmail<br/>Naver"))

@@ -43,6 +43,7 @@ TINY_LIMIT_PROVIDER = MailProvider(
     security           = "starttls",
     blocked_extensions = GMAIL.blocked_extensions,
     max_message_bytes  = 10,
+    max_recipients     = GMAIL.max_recipients,
     login_requirements = GMAIL.login_requirements,
 )
 TINY_LIMIT_ACCOUNT = SmtpAccount(
@@ -442,6 +443,7 @@ SSL_PROVIDER = MailProvider(
     security           = "ssl",
     blocked_extensions = GMAIL.blocked_extensions,
     max_message_bytes  = GMAIL.max_message_bytes,
+    max_recipients     = GMAIL.max_recipients,
     login_requirements = GMAIL.login_requirements,
 )
 SSL_ACCOUNT = SmtpAccount(
