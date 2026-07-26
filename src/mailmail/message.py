@@ -163,14 +163,26 @@ class Message:
             The `From` address -- normally the sending account's username.
         """
         mime = EmailMessage()
-        mime["From"] = sender
-        # Both conditional: a message addressed only to a cc has no To
-        # recipients, and an empty `To:` header is not the way to say that --
-        # it is a malformed header that some filters read as a spam signal.
-        if self.to:
-            mime["To"] = ", ".join(self.to)
-        if self.cc:
-            mime["Cc"] = ", ".join(self.cc)
+        # The stdlib header parser rejects a malformed address (a sender username
+        # like "user@", a recipient "user@[bad") by raising an assortment of
+        # undocumented types -- IndexError, AttributeError, ValueError -- none of
+        # them a MailmailError. Convert any of them here, at the one boundary where
+        # an address becomes a header, so a bad address stays inside send()'s catch
+        # surface rather than escaping as a bare traceback. The block does nothing
+        # else that can raise, so the broad catch masks nothing of ours.
+        try:
+            mime["From"] = sender
+            # Both conditional: a message addressed only to a cc has no To
+            # recipients, and an empty `To:` header is not the way to say that --
+            # it is a malformed header that some filters read as a spam signal.
+            if self.to:
+                mime["To"] = ", ".join(self.to)
+            if self.cc:
+                mime["Cc"] = ", ".join(self.cc)
+        except Exception as err:
+            raise InvalidMessageError(
+                f"an address will not go in a mail header: {err}"
+            ) from err
         # Bcc is deliberately absent: writing the header would show every blind
         # recipient to all the others. The addresses reach the server through the
         # SMTP envelope instead (see Mailer.send).

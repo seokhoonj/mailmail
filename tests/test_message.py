@@ -127,6 +127,20 @@ class TestContentThatCannotBeEncoded:
             _make_message(body="hi", html="<p>\udce9</p>")
 
 
+class TestMalformedAddressesInHeaders:
+    """An address the stdlib header parser chokes on (it raises IndexError /
+    AttributeError, not a clean error) surfaces as a MailmailError, not a bare
+    traceback at assembly."""
+
+    def test_a_malformed_sender_is_an_invalid_message_error(self):
+        with pytest.raises(InvalidMessageError, match="mail header"):
+            _make_message().to_mime(sender="user@")
+
+    def test_a_malformed_recipient_is_an_invalid_message_error(self):
+        with pytest.raises(InvalidMessageError, match="mail header"):
+            _make_message(to=("user@[bad",)).to_mime(sender=SENDER)
+
+
 class TestHeaders:
     def test_from_and_to_are_set_from_the_sender_and_recipients(self):
         mime = _make_message(to=["lead@example.com", "analyst@example.com"]).to_mime(
