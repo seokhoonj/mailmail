@@ -256,10 +256,12 @@ class TestConfigDir:
         monkeypatch.setenv("XDG_CONFIG_HOME", "")
         assert config_dir() == Path.home() / ".config" / "mailmail"
 
-    def test_ignores_an_unresolvable_tilde_user_without_raising(self, monkeypatch):
+    def test_ignores_an_unresolvable_tilde_user_without_raising(
+        self, unresolvable_tilde, monkeypatch
+    ):
         # `~nouser/x` cannot be expanded (no such user), which makes Path.expanduser
         # raise RuntimeError; the value stays relative, so it is ignored, not fatal.
-        monkeypatch.setenv("XDG_CONFIG_HOME", "~nosuchuser_zzz/config")
+        monkeypatch.setenv("XDG_CONFIG_HOME", f"{unresolvable_tilde}/config")
         assert config_dir() == Path.home() / ".config" / "mailmail"
 
     def test_home_resolution_failure_is_a_config_error_not_runtime_error(
@@ -280,17 +282,19 @@ class TestConfigDir:
 
 class TestUnresolvableTildeUserInANamedPath:
     def test_config_override_with_unresolvable_tilde_user_is_config_error(
-        self, monkeypatch
+        self, unresolvable_tilde, monkeypatch
     ):
         # An explicit MAILMAIL_CONFIG is not silently dropped like a bad XDG value;
         # the unresolvable `~user` surfaces as ConfigError, not a bare RuntimeError.
-        monkeypatch.setenv("MAILMAIL_CONFIG", "~nosuchuser_zzz/config.toml")
+        monkeypatch.setenv("MAILMAIL_CONFIG", f"{unresolvable_tilde}/config.toml")
         with pytest.raises(ConfigError, match="names no home directory"):
             load_config()
 
-    def test_explicit_path_with_unresolvable_tilde_user_is_config_error(self):
+    def test_explicit_path_with_unresolvable_tilde_user_is_config_error(
+        self, unresolvable_tilde
+    ):
         with pytest.raises(ConfigError, match="names no home directory"):
-            load_config("~nosuchuser_zzz/config.toml")
+            load_config(f"{unresolvable_tilde}/config.toml")
 
 
 def test_config_dir_is_exported_at_the_top_level():

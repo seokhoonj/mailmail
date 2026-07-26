@@ -43,10 +43,10 @@ def resolve_recipients(
     """
     if isinstance(recipients, str):
         recipients = (recipients,)
-    resolved: dict[str, None] = {}  # doubles as an ordered set
+    resolved_addresses: dict[str, None] = {}  # doubles as an ordered set
     for recipient in recipients:
-        _resolve_into(recipient, address_book, resolved, trail=())
-    return list(resolved)
+        _resolve_into(recipient, address_book, resolved_addresses, trail=())
+    return list(resolved_addresses)
 
 
 def _resolve_into(

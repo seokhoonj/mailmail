@@ -15,9 +15,31 @@ goes wrong partway through a handshake.
 import email
 import os
 import smtplib
+from pathlib import Path
 from typing import NamedTuple
 
 import pytest
+
+
+@pytest.fixture
+def unresolvable_tilde(monkeypatch):
+    """A `~user` value that deterministically fails to expand.
+
+    `Path.expanduser` raises RuntimeError for a `~user` naming nobody, which is
+    how the package's `~user` guards are reached. Relying on a real absent
+    account makes the test depend on the host user database; instead, force the
+    raise for one sentinel prefix -- and only that prefix, so `Path.home()` (which
+    expands a bare `~`) still works. Returns the sentinel value to feed in.
+    """
+    real_expanduser = Path.expanduser
+
+    def fake_expanduser(self):
+        if str(self).startswith("~nouser_sentinel"):
+            raise RuntimeError("Could not determine home directory")
+        return real_expanduser(self)
+
+    monkeypatch.setattr(Path, "expanduser", fake_expanduser)
+    return "~nouser_sentinel"
 
 # What smtp.gmail.com really advertises, so the default case is the real one.
 GMAIL_ADVERTISED_SIZE = 35_882_577

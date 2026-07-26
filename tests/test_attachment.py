@@ -122,11 +122,11 @@ class TestMimeGuessing:
         with pytest.raises(AttachmentError, match="not a regular file"):
             Attachment.from_path(tmp_path)
 
-    def test_unresolvable_tilde_user_is_an_attachment_error(self):
+    def test_unresolvable_tilde_user_is_an_attachment_error(self, unresolvable_tilde):
         # `~nouser/x` makes Path.expanduser raise RuntimeError; a caller-named
         # attachment path must surface as AttachmentError, not a bare RuntimeError.
         with pytest.raises(AttachmentError, match="names no home directory"):
-            Attachment.from_path("~nosuchuser_zzz/report.pdf")
+            Attachment.from_path(f"{unresolvable_tilde}/report.pdf")
 
     def test_a_tilde_path_is_expanded(self, tmp_path, monkeypatch):
         # Positive counterpart: `~` (expanded via $HOME) resolves to a real file.

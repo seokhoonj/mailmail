@@ -359,11 +359,13 @@ class TestDefaultLocation:
         )
 
     def test_credentials_override_with_unresolvable_tilde_user_is_credentials_error(
-        self, monkeypatch
+        self, unresolvable_tilde, monkeypatch
     ):
         # An explicit MAILMAIL_CREDENTIALS is not silently dropped; the unresolvable
         # `~user` surfaces as CredentialsError, not a bare RuntimeError.
-        monkeypatch.setenv("MAILMAIL_CREDENTIALS", "~nosuchuser_zzz/credentials.json")
+        monkeypatch.setenv(
+            "MAILMAIL_CREDENTIALS", f"{unresolvable_tilde}/credentials.json"
+        )
         with pytest.raises(CredentialsError, match="names no home directory"):
             default_credentials_path()
 

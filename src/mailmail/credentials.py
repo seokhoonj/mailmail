@@ -104,18 +104,18 @@ def resolve_password(account: SmtpAccount, *, path: Path | None = None) -> str:
         When `path` is omitted, the `~/.config` home fallback has no home
         directory; see `default_credentials_path`.
     """
-    from_env = _load_password_from_env(account)
-    if from_env:
-        return from_env
+    password_from_env = _load_password_from_env(account)
+    if password_from_env:
+        return password_from_env
     path = path if path is not None else default_credentials_path()
     # The permission gate belongs here, at the moment a password is trusted --
     # not in the loader, which store and delete also go through. Refusing to
     # *write* a loose file would only strand it loose; rewriting it tightens it.
     if path.exists():
         _check_owner_only_readable(path)
-    stored = _load_password_by_username(path).get(account.username)
-    if stored:
-        return stored
+    stored_password = _load_password_by_username(path).get(account.username)
+    if stored_password:
+        return stored_password
     raise MissingPasswordError(
         f"no password stored for {account.username}; put the app password from "
         f"{account.provider.name} in {path} with store_password(account, password), "

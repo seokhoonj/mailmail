@@ -360,10 +360,13 @@ def _send_over(
     keeps as a receipt, so one dead address does not lose the rest of a batch.
     """
     try:
-        refused = smtp.sendmail(sender, list(recipients), payload)
+        reply_by_refused_recipient = smtp.sendmail(sender, list(recipients), payload)
     except smtplib.SMTPRecipientsRefused as err:
-        refused = err.recipients
-    return {address: _as_reason(reply) for address, reply in refused.items()}
+        reply_by_refused_recipient = err.recipients
+    return {
+        address: _as_reason(reply)
+        for address, reply in reply_by_refused_recipient.items()
+    }
 
 
 def _as_reason(reply: tuple[int, bytes]) -> str:
