@@ -29,7 +29,7 @@ class TestTheseCannotBeMisordered:
     def test_a_provider_cannot_be_built_positionally(self):
         with pytest.raises(TypeError):
             MailProvider(  # type: ignore[call-arg]
-                "naver", "smtp.naver.com", 587, "starttls", frozenset(), 1, "n/a"
+                "naver", "smtp.naver.com", 587, "starttls", frozenset(), 1, 100, "n/a"
             )
 
 
