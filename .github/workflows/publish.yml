@@ -24,9 +24,8 @@ jobs:
     steps:
       # Pinned the same way check.yml is: checkout past its mutable tag to a
       # commit, setup-uv on its immutable v8 tag, and the publish action past its
-      # moving release/v1 branch to a commit. dependabot proposes all three
-      # (.github/dependabot.yml). uv build writes the sdist and wheel to dist/,
-      # which the publish action uploads.
+      # moving release/v1 branch to a commit; bumps are applied by hand. uv build
+      # writes the sdist and wheel to dist/, which the publish action uploads.
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
       - name: Build sdist and wheel
