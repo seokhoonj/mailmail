@@ -19,7 +19,7 @@ jobs:
         # -- >=3.11 promises every release above it, with no ceiling to read off --
         # so it tracks whatever CPython currently ships: left behind, it stops being
         # evidence the promise holds on new releases and becomes a version nobody runs.
-        python-version: ["3.11", "3.14"]
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
 
     steps:
       # Both pinned past a moving tag: @v7 is a pointer its owner can repoint, and the
