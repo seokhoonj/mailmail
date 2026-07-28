@@ -8,13 +8,13 @@ version = "0.2.0"
 description = "Send mail through Gmail or Naver SMTP, with the provider's own rules checked before anything is sent."
 readme = "README.md"
 requires-python = ">=3.11"
-license = { text = "MIT" }
+license = "MIT"
+license-files = ["LICENSE"]
 authors = [{ name = "Seokhoon Joo", email = "seokhoonj@gmail.com" }]
 keywords = ["email", "smtp", "gmail", "naver", "mail-merge", "attachments"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",

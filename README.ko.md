@@ -1,5 +1,10 @@
 # mailmail
 
+[![check](https://github.com/seokhoonj/mailmail/actions/workflows/check.yml/badge.svg)](https://github.com/seokhoonj/mailmail/actions/workflows/check.yml)
+[![PyPI](https://img.shields.io/pypi/v/mailmail)](https://pypi.org/project/mailmail/)
+[![Python](https://img.shields.io/pypi/pyversions/mailmail)](https://pypi.org/project/mailmail/)
+[![License](https://img.shields.io/pypi/l/mailmail)](https://github.com/seokhoonj/mailmail/blob/main/LICENSE)
+
 [English](README.md) | **한국어**
 
 NAVER·Gmail 계정으로 메일을 보내는 파이썬 패키지. 첨부파일, HTML 본문, 참조를 지원하고,
