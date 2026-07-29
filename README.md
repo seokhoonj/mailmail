@@ -412,13 +412,13 @@ the place Claude looks:
 
 ```sh
 git clone https://github.com/seokhoonj/mailmail.git
-ln -s "$PWD/mailmail/skills/send" ~/.claude/skills/send  # macOS, Linux
+ln -s "$PWD/mailmail/plugins/mailmail/skills/send" ~/.claude/skills/send  # macOS, Linux
 ```
 
 ```powershell
 git clone https://github.com/seokhoonj/mailmail.git
 New-Item -ItemType SymbolicLink -Path "$HOME\.claude\skills\send" `
-         -Target "$PWD\mailmail\skills\send"  # Windows (PowerShell)
+         -Target "$PWD\mailmail\plugins\mailmail\skills\send"  # Windows (PowerShell)
 ```
 
 After that, just say it in Claude Code:
