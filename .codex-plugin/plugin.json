@@ -1,0 +1,20 @@
+{
+  "name": "mailmail",
+  "version": "0.1.0",
+  "description": "Send a result, report, or file from a conversation as email, powered by the mailmail package",
+  "author": { "name": "seokhoonj", "url": "https://github.com/seokhoonj" },
+  "homepage": "https://github.com/seokhoonj/mailmail",
+  "repository": "https://github.com/seokhoonj/mailmail",
+  "license": "MIT",
+  "keywords": ["email", "smtp", "gmail", "naver", "send"],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "mailmail",
+    "shortDescription": "Send a conversation result as email via Gmail or Naver SMTP",
+    "longDescription": "Send a result, report, or file from a conversation as email through Gmail or Naver SMTP via the mailmail package. It shows the recipients, subject, and attachments for approval before sending.",
+    "developerName": "seokhoonj",
+    "category": "Productivity",
+    "capabilities": [],
+    "defaultPrompt": ["Email this report to <recipient>"]
+  }
+}
