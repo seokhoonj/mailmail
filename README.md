@@ -407,8 +407,18 @@ Install the skill into [Claude Code](https://claude.com/claude-code) and you can
 mail **by asking**, without writing Python. A skill is an instruction sheet that tells
 Claude "when a request like this comes in, do this."
 
-The skill lives in this repository, so clone it first, then link its skill folder into
-the place Claude looks:
+The repo is its own plugin marketplace, so install it from inside Claude Code:
+
+```
+/plugin marketplace add seokhoonj/mailmail
+/plugin install mailmail@mailmail
+```
+
+Then invoke it with `/mailmail:send` (or plain language). The skill calls the
+`mailmail` command, so install the package too (step 1). See `plugins/mailmail/skills/send/SKILL.md`.
+
+Prefer no plugin? Clone the repo and symlink its skill folder into the place Claude
+looks:
 
 ```sh
 git clone https://github.com/seokhoonj/mailmail.git

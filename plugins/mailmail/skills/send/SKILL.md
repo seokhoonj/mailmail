@@ -17,46 +17,25 @@ of that here, do not copy the blocked list into this file, do not check extensio
 yourself. That would put one fact in two homes, and the two always drift. This
 skill only assembles one `send(...)` call and runs it.
 
-## Where to find the package
+## Confirm the command is ready
 
-**Do not hardcode a path.** People clone the repository to different places. This
-skill is symlinked out of the repository, so the repository is **four levels above**
-this skill's folder. Find it once the first time it's needed in a session, then
-reuse that value.
+This skill calls the **`mailmail` command** the package installs. Once per session,
+check it is there:
 
 ```sh
-python3 -c "
-import os, pathlib
-skill = pathlib.Path(os.path.realpath(os.path.expanduser('~/.claude/skills/send')))
-venv  = skill.parents[3] / '.venv' / ('Scripts' if os.name == 'nt' else 'bin') / 'python'
-print(venv if venv.exists() else 'NOT FOUND')
-"
+mailmail --version
 ```
 
-If it prints `NOT FOUND`, do not invent a path — **ask the user where the
-repository is.** The skill was copied rather than symlinked, or the venv has not
-been created yet (README step 1).
+If a version prints, you are ready -- every example below uses this command. If
+`command not found` appears, do not invent a path; tell the user how to install it:
 
-The examples below write the resolved path as `$MAILMAIL_PY`.
+```sh
+pip install mailmail        # into the current environment
+pipx install mailmail       # for a global command, kept isolated
+```
 
-## A command-line alternative
-
-The package ships a `mailmail` console command, reachable through the same
-interpreter as `$MAILMAIL_PY -m mailmail ...`. It is the same package underneath, so
-it enforces the same checks and raises the same exceptions -- it is a second door,
-not a second brain. Use whichever fits the step; the confirmation in step 2 is
-required either way, because the command sends the moment it runs.
-
-- Read the address book: `$MAILMAIL_PY -m mailmail contacts` prints the accounts (the
-  default marked) and every alias expanded to its addresses.
-- First-time setup: `$MAILMAIL_PY -m mailmail setup` prints where the config and
-  credentials go, plus a starter template. `$MAILMAIL_PY -m mailmail set-password
-  --account <name>` stores the app password at a prompt -- so it is never typed on the
-  command line, and never has to be pasted into the chat.
-- Send: `$MAILMAIL_PY -m mailmail send --to <name> --subject <subject> --body-file
-  <path> --account <name>`. Pass the body through `--body-file` (or stdin) rather than
-  `--body`, for the same reason the script below writes it to a file: a body with
-  newlines, quotes, or non-ASCII text should not have to survive shell quoting.
+If the user installed it into a specific virtual environment, confirm they run it
+with that environment active.
 
 ## Procedure
 
@@ -76,30 +55,20 @@ not added. Every address on the envelope is one you wrote into the call, so **if
 you don't know the recipient, don't invent one — ask.** The config does not fill it
 in behind you.
 
-If you don't know what aliases exist, read the address book first:
+If you don't know what accounts or aliases exist, read the address book first:
 
 ```sh
-$MAILMAIL_PY -c "
-from mailmail import load_config
-config = load_config()
-print('accounts:', ', '.join(sorted(config.account_by_name)))
-print('default:', config.default_account)
-print('contacts:', ', '.join(sorted(config.address_book)))
-"
+mailmail contacts
 ```
+
+It prints the accounts (the default marked) and every alias expanded to its
+addresses.
 
 ### 2. Confirm before sending — do not skip this
 
 Expand aliases to **their real addresses** and show them. When the user says
-`team`, they must be able to see who exactly it goes to. The package expands it too:
-
-```sh
-$MAILMAIL_PY -c "
-from mailmail import load_config, resolve_recipients
-config = load_config()
-print(resolve_recipients(['team'], address_book=config.address_book))
-"
-```
+`team`, they must be able to see who exactly it goes to -- `mailmail contacts`
+(step 1) already prints every alias expanded, so read the real addresses off it.
 
 Then show the user this and get approval:
 
@@ -133,41 +102,38 @@ own addresses.
 
 ### 3. Send
 
-Write the script to the scratchpad and run it. The body mixes newlines, quotes, and
-non-ASCII text, so write it to a file rather than passing it as a shell argument.
-
-```python
-# <scratchpad>/send.py
-from mailmail import send
-
-receipt = send(
-    account     = "naver",
-    to          = ["lead", "reviewer"],   # aliases from the address book (read in step 1)
-    subject     = "Weekly report",
-    body        = "Hi,\n\nThis week's report is attached.\n\nBest regards,\n",
-    attachments = ["/path/to/report.xlsx"],
-)
-print("message-id:", receipt.message_id)
-print("accepted:", receipt.accepted)
-if not receipt.is_complete:
-    print("REFUSED:", receipt.reason_by_refused_recipient)
-```
+The body mixes newlines, quotes, and non-ASCII text, so do not pass it as a shell
+argument -- **write it to a file and hand it to `--body-file`** (or pipe it in on
+stdin):
 
 ```sh
-$MAILMAIL_PY <scratchpad>/send.py
+# after writing the body to <scratchpad>/body.txt:
+mailmail send --account naver \
+    --to lead --to reviewer \
+    --subject "Weekly report" \
+    --body-file <scratchpad>/body.txt \
+    --attach /path/to/report.xlsx
 ```
+
+- `--to` (and `--cc`, `--bcc`) take an address or an alias, and repeat for several.
+- `--attach` repeats per file; drop it when there is nothing to attach.
+- Add `--html-file <path>` only when a table or formatting is needed.
+- `--account` defaults to the config's `default_account` when omitted.
 
 ### 4. Report the result as it is
 
-- If `receipt.is_complete` is true, it was sent. Report the recipients and the
-  message-id.
-- If it is false, **only some of it went.** Always tell the user which addresses
-  were refused and why. Do not round it up to success.
+`mailmail send` prints the accepted recipients and the message-id, and exits
+non-zero when only some of it went.
+
+- If it exited zero, it was sent. Report the recipients and the message-id.
+- If it exited non-zero, **only some of it went.** Always tell the user which
+  addresses were refused and why -- the command prints them. Do not round it up to
+  success.
 
 ## When an exception is raised
 
-The package's exceptions are already sentences a user can read. Relay them as they
-are, and add only the action below.
+The `mailmail` command prints the package's exception, which is already a sentence a
+user can read. Relay it as it is, and add only the action below.
 
 **Rule: relay `str(err)` verbatim.** Each exception already carries, in a sentence,
 what went wrong and how to fix it. Do not summarise or copy that content here — one
@@ -176,7 +142,7 @@ only the **action to add** per exception.
 
 | Exception | Action to add |
 |---|---|
-| `MissingPasswordError` | **Do not have the user paste the password into the chat.** Point them to the `getpass` command they run in their own terminal (see the README). Once stored, it is not asked again. |
+| `MissingPasswordError` | **Do not have the user paste the password into the chat.** Point them to `mailmail set-password --account <name>`, which prompts in their own terminal. Once stored, it is not asked again. |
 | `InsecureCredentialsError` | None — the exception carries the `chmod 600` command itself. |
 | `BlockedAttachmentError` | Suggest sharing it as a link. |
 | `EncryptedArchiveError` | Ask whether to remove the archive password or send a link. |
@@ -193,23 +159,21 @@ only the **action to add** per exception.
 ## First-time setup
 
 A `ConfigError` means the config file is missing. Its format is in step 2 of the
-repository's `README.md`.
-
-**Do not write a path down.** The package decides it from `MAILMAIL_CONFIG`,
-`MAILMAIL_CREDENTIALS`, and `XDG_CONFIG_HOME`, so a path written here would send a
-user who set any of those to fix the wrong file. Ask the package:
+repository's `README.md`. Ask the package where the files go rather than writing a
+path down:
 
 ```sh
-$MAILMAIL_PY -c "
-from mailmail import default_config_path, default_credentials_path
-print('config:     ', default_config_path())
-print('credentials:', default_credentials_path())
-"
+mailmail setup
 ```
 
-**Do not create the config file or the password inside the repository** — the
-repository is committed, and may sit under a synced drive. Create them where the
-command above prints. Both are outside the repository.
+It prints where the config and credentials belong -- computed from `MAILMAIL_CONFIG`,
+`MAILMAIL_CREDENTIALS`, and `XDG_CONFIG_HOME`, so it is right even when the user set
+one of those -- plus a starter template. Then store the app password at a prompt:
+
+```sh
+mailmail set-password --account naver
+```
 
 **Never write a password in plain text into the chat or a script.** It stays in the
-transcript. Point the user to a `getpass` command they run in their own terminal.
+transcript. `mailmail set-password` reads it at a prompt in the user's own terminal,
+so it is never typed on the command line and never has to be pasted into the chat.

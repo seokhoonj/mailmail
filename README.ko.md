@@ -377,8 +377,17 @@ mailmail set-password --account naver  # 앱 비밀번호 저장(프롬프트로
 [Claude Code](https://claude.com/claude-code)에 스킬을 설치하면 파이썬을 쓰지 않고 **말로**
 메일을 보낼 수 있습니다. 스킬은 Claude에게 "이런 요청이 오면 이렇게 해라"를 알려주는 설명서입니다.
 
-스킬은 이 저장소에 들어 있으니, 먼저 저장소를 받은 뒤 스킬 폴더를 Claude가 찾는 자리에
-연결합니다.
+저장소 자체가 플러그인 마켓플레이스라, Claude Code 안에서 바로 설치합니다:
+
+```
+/plugin marketplace add seokhoonj/mailmail
+/plugin install mailmail@mailmail
+```
+
+그다음 `/mailmail:send`(또는 자연어)로 호출합니다. skill은 `mailmail` 명령을 부르므로
+패키지도 설치돼 있어야 합니다(1단계). 자세한 것은 `plugins/mailmail/skills/send/SKILL.md`.
+
+플러그인 없이 쓰려면, 저장소를 받아 스킬 폴더를 Claude가 찾는 자리에 심링크합니다.
 
 ```sh
 git clone https://github.com/seokhoonj/mailmail.git

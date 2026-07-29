@@ -117,8 +117,9 @@ class TestItDoesNotAssumeItIsOnMyMachine:
     config location by talking about Dropbox syncing, which is my arrangement,
     not theirs.
 
-    The skill is symlinked out of the repo, so it can find the repo two levels up
-    from itself. That works from any checkout, and there is nothing left to
+    Now it calls the installed `mailmail` command by name, the same as the other
+    packages' skills. That resolves through PATH wherever the package was installed
+    (pip or pipx), so there is no repo path, no symlink depth, and nothing left to
     hardcode.
     """
 
@@ -159,10 +160,16 @@ class TestItDoesNotAssumeItIsOnMyMachine:
                 f"happen to keep this and says nothing about anyone else"
             )
 
-    def test_it_finds_the_interpreter_instead_of_knowing_it(self):
+    def test_it_calls_the_installed_command_not_a_repo_path(self):
         body = SKILL.read_text(encoding="utf-8")
-        assert "os.path.realpath" in body, "the skill must resolve its own symlink"
-        assert "NOT FOUND" in body, "and must have an answer for when that fails"
+        assert "`mailmail` command" in body, (
+            "the skill must call the installed command by name, not a repo path"
+        )
+        assert "pip install mailmail" in body, "and must state how to install it"
+        assert "os.path.realpath" not in body, (
+            "the skill must not resolve a repo-local .venv -- that only works from a "
+            "clone+symlink, not from a pip or marketplace install"
+        )
 
     def test_every_error_a_caller_must_act_on_is_in_the_table(self):
         """The one thing the skill is allowed to know: what to *do* per error.
