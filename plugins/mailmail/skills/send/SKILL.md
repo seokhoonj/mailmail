@@ -20,7 +20,7 @@ skill only assembles one `send(...)` call and runs it.
 ## Where to find the package
 
 **Do not hardcode a path.** People clone the repository to different places. This
-skill is symlinked out of the repository, so the repository is **two levels above**
+skill is symlinked out of the repository, so the repository is **four levels above**
 this skill's folder. Find it once the first time it's needed in a session, then
 reuse that value.
 
@@ -28,7 +28,7 @@ reuse that value.
 python3 -c "
 import os, pathlib
 skill = pathlib.Path(os.path.realpath(os.path.expanduser('~/.claude/skills/send')))
-venv  = skill.parents[1] / '.venv' / ('Scripts' if os.name == 'nt' else 'bin') / 'python'
+venv  = skill.parents[3] / '.venv' / ('Scripts' if os.name == 'nt' else 'bin') / 'python'
 print(venv if venv.exists() else 'NOT FOUND')
 "
 ```

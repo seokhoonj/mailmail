@@ -4,7 +4,7 @@
   "plugins": [
     {
       "name": "mailmail",
-      "source": { "source": "local", "path": "./" },
+      "source": { "source": "local", "path": "./plugins/mailmail" },
       "policy": { "installation": "AVAILABLE", "authentication": "ON_INSTALL" },
       "category": "Productivity"
     }

@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pytest
 
-SKILL = Path(__file__).parent.parent / "skills" / "send" / "SKILL.md"
+SKILL = Path(__file__).parent.parent / "plugins" / "mailmail" / "skills" / "send" / "SKILL.md"
 
 
 def _frontmatter_text() -> str:
