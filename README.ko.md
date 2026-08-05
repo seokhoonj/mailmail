@@ -391,8 +391,11 @@ mailmail set-password --account naver  # 앱 비밀번호 저장(프롬프트로
 
 ```sh
 git clone https://github.com/seokhoonj/mailmail.git
-ln -s "$PWD/mailmail/plugins/mailmail/skills/send" ~/.claude/skills/send  # macOS, Linux
+ln -s "$PWD/mailmail/plugins/mailmail/skills/send" ~/.claude/skills/send   # Claude Code → /send
+ln -s "$PWD/mailmail/plugins/mailmail/skills/send" ~/.codex/skills/send    # Codex → $mailmail:send
 ```
+
+Claude Code는 바로 인식하고, Codex는 재시작해야 로딩됩니다.
 
 ```powershell
 git clone https://github.com/seokhoonj/mailmail.git

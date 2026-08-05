@@ -422,8 +422,11 @@ looks:
 
 ```sh
 git clone https://github.com/seokhoonj/mailmail.git
-ln -s "$PWD/mailmail/plugins/mailmail/skills/send" ~/.claude/skills/send  # macOS, Linux
+ln -s "$PWD/mailmail/plugins/mailmail/skills/send" ~/.claude/skills/send   # Claude Code -> /send
+ln -s "$PWD/mailmail/plugins/mailmail/skills/send" ~/.codex/skills/send    # Codex -> $mailmail:send
 ```
+
+Claude Code picks it up immediately; Codex needs a restart to load it.
 
 ```powershell
 git clone https://github.com/seokhoonj/mailmail.git
