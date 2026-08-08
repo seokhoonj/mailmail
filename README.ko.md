@@ -19,12 +19,12 @@ NAVER·Gmail 계정으로 메일을 보내는 파이썬 패키지. 첨부파일,
 - [2. 계정 설정](#2-계정-설정) (`~/.config/mailmail/config.toml`)
 - [3. 앱 비밀번호 받기](#3-앱-비밀번호-받기) — NAVER, Gmail
 - [4. 메일 보내기](#4-메일-보내기)
-- [여러 통 한 번에 (메일 머지)](#여러-통-한-번에-메일-머지) (`send_bulk`)
-- [명령줄에서 쓰기](#명령줄에서-쓰기) (`mailmail`)
-- [못 보내는 파일](#못-보내는-파일)
-- [Claude Code에서 쓰기](#claude-code에서-쓰기)
-- [문제가 생기면](#문제가-생기면)
-- [개발](#개발)
+- [5. 여러 통 한 번에 (메일 머지)](#5-여러-통-한-번에-메일-머지) (`send_bulk`)
+- [6. 명령줄에서 쓰기](#6-명령줄에서-쓰기) (`mailmail`)
+- [7. 못 보내는 파일](#7-못-보내는-파일)
+- [8. AI 코딩 에이전트에서 사용](#8-ai-코딩-에이전트에서-사용)
+- [9. 문제가 생기면](#9-문제가-생기면)
+- [10. 개발](#10-개발)
 
 ## 빠른 시작
 
@@ -39,7 +39,7 @@ send(
 )
 ```
 
-Claude Code를 쓴다면 파이썬을 몰라도 말로 보낼 수 있습니다 → [Claude Code에서 쓰기](#claude-code에서-쓰기)
+Claude Code를 쓴다면 파이썬을 몰라도 말로 보낼 수 있습니다 → [AI 코딩 에이전트에서 사용](#8-ai-코딩-에이전트에서-사용)
 
 Windows·macOS·Linux에서 동작합니다. 설치되는 것은 이 패키지뿐이고, 다른 라이브러리를 함께
 끌어오지 않습니다.
@@ -267,7 +267,7 @@ if not receipt.is_complete:  # 일부 주소가 거부됐을 때
   쓰면 사람마다 다른 메일을 읽게 됩니다.
 - **한글은 그냥 쓰면 됩니다.** 제목이든 본문이든 따로 처리할 게 없습니다.
 
-## 여러 통 한 번에 (메일 머지)
+## 5. 여러 통 한 번에 (메일 머지)
 
 같은 안내를 사람마다 다른 값·다른 첨부로 보낼 때는 `send_bulk`을 씁니다. 한 명에 `Mail`
 하나씩 담으면, 전부 **연결 하나로** 나갑니다 — 서른 명이면 로그인이 서른 번이 아니라 한
@@ -304,7 +304,7 @@ for receipt in receipts:
   앞 통은 이미 나간 뒤라 되돌릴 수 없고, 그때까지 모은 receipt도 잃습니다. 서버가
   **수신자별로** 거부한 것은 예외가 아니라 receipt에 담깁니다.
 
-## 명령줄에서 쓰기
+## 6. 명령줄에서 쓰기
 
 위의 모든 것은 파이썬 없이 터미널에서도 됩니다 — 패키지를 설치하면 `mailmail` 명령이
 `PATH`에 올라갑니다.
@@ -351,7 +351,7 @@ mailmail set-password --account naver  # 앱 비밀번호 저장(프롬프트로
 똑같이 연결을 열기 전에 알려줍니다. 일부만 거부되면 종료 코드가 0이 아니어서 스크립트가
 알아챌 수 있습니다.
 
-## 못 보내는 파일
+## 7. 못 보내는 파일
 
 메일 서비스가 거부할 첨부는 **보내기 전에** 예외로 알려줍니다. 서버까지 갔다가 몇 분 뒤
 반송 메일로 아는 것보다 낫기 때문입니다.
@@ -372,12 +372,14 @@ mailmail set-password --account naver  # 앱 비밀번호 저장(프롬프트로
 실행파일이 들어 있으면 검사를 통과해 서버까지 갔다가 거부됩니다. 이 두 형식은 쓰지 않는 편이
 낫습니다.
 
-## Claude Code에서 쓰기
+## 8. AI 코딩 에이전트에서 사용
 
-[Claude Code](https://claude.com/claude-code)에 스킬을 설치하면 파이썬을 쓰지 않고 **말로**
+[Claude Code](https://claude.com/claude-code)나 Codex에 스킬을 설치하면 파이썬을 쓰지 않고 **말로**
 메일을 보낼 수 있습니다. 스킬은 Claude에게 "이런 요청이 오면 이렇게 해라"를 알려주는 설명서입니다.
 
-저장소 자체가 플러그인 마켓플레이스라, Claude Code 안에서 바로 설치합니다:
+### 8.1 Claude Code
+
+Claude Code 채팅창에서 마켓플레이스를 추가하고 설치합니다:
 
 ```
 /plugin marketplace add seokhoonj/mailmail
@@ -387,7 +389,20 @@ mailmail set-password --account naver  # 앱 비밀번호 저장(프롬프트로
 그다음 `/mailmail:send`(또는 자연어)로 호출합니다. skill은 `mailmail` 명령을 부르므로
 패키지도 설치돼 있어야 합니다(1단계). 자세한 것은 `plugins/mailmail/skills/send/SKILL.md`.
 
-플러그인 없이 쓰려면, 저장소를 받아 스킬 폴더를 Claude가 찾는 자리에 심링크합니다.
+### 8.2 Codex
+
+터미널에서 마켓플레이스를 추가하고 설치합니다:
+
+```
+codex plugin marketplace add seokhoonj/mailmail
+codex plugin add mailmail@mailmail
+```
+
+`send` skill이 관련 요청에 자동으로 반응합니다.
+
+### 8.3 플러그인 없이 (symlink)
+
+저장소를 받아 스킬 폴더를 에이전트가 찾는 자리에 심링크합니다.
 
 ```sh
 git clone https://github.com/seokhoonj/mailmail.git
@@ -414,7 +429,7 @@ New-Item -ItemType SymbolicLink -Path "$HOME\.claude\skills\send" `
 풀어서 보여주므로, `team`이 정확히 누구에게 가는지 눈으로 확인할 수 있습니다. 메일은 되돌릴 수
 없기 때문입니다.
 
-## 문제가 생기면
+## 9. 문제가 생기면
 
 예외 메시지가 무엇이 잘못됐고 어떻게 고치는지를 문장으로 알려줍니다.
 
@@ -428,7 +443,7 @@ New-Item -ItemType SymbolicLink -Path "$HOME\.claude\skills\send" `
 | `TooManyRecipientsError` | 한 통에 수신자가 100명을 넘습니다. 여러 번에 나눠 보냅니다 |
 | `AuthenticationFailedError` | 로그인이 거부됐습니다. 앱 비밀번호가 맞는지, NAVER라면 SMTP가 켜져 있는지 |
 
-## 개발
+## 10. 개발
 
 ```sh
 git clone https://github.com/seokhoonj/mailmail.git

@@ -22,12 +22,12 @@ book so you can call the people you write often by name.
 - [2. Configure your accounts](#2-configure-your-accounts) (`~/.config/mailmail/config.toml`)
 - [3. Get an app password](#3-get-an-app-password) — Naver, Gmail
 - [4. Send mail](#4-send-mail)
-- [Many at once (mail merge)](#many-at-once-mail-merge) (`send_bulk`)
-- [From the command line](#from-the-command-line) (`mailmail`)
-- [Files you can't send](#files-you-cant-send)
-- [Use it from Claude Code](#use-it-from-claude-code)
-- [When something goes wrong](#when-something-goes-wrong)
-- [Development](#development)
+- [5. Many at once (mail merge)](#5-many-at-once-mail-merge) (`send_bulk`)
+- [6. From the command line](#6-from-the-command-line) (`mailmail`)
+- [7. Files you can't send](#7-files-you-cant-send)
+- [8. Use it from an AI coding agent](#8-use-it-from-an-ai-coding-agent)
+- [9. When something goes wrong](#9-when-something-goes-wrong)
+- [10. Development](#10-development)
 
 ## Quick start
 
@@ -43,7 +43,7 @@ send(
 ```
 
 Using Claude Code, you can send mail by asking, without writing any Python →
-[Use it from Claude Code](#use-it-from-claude-code)
+[Use it from an AI coding agent](#8-use-it-from-an-ai-coding-agent)
 
 Runs on Windows, macOS, and Linux. Installing it installs this package and nothing
 else — it pulls in no other libraries.
@@ -287,7 +287,7 @@ A few things to know:
 - **Korean (or any non-ASCII) just works.** Nothing special to do in the subject or
   the body.
 
-## Many at once (mail merge)
+## 5. Many at once (mail merge)
 
 To send the same note to many people with a different value or attachment for each,
 use `send_bulk`. One `Mail` per person, and they all go out over **one connection** —
@@ -327,7 +327,7 @@ A few things to know:
   already gone and cannot be unsent, and the receipts collected so far are lost. What
   the server refuses **per recipient** goes into the receipt, not an exception.
 
-## From the command line
+## 6. From the command line
 
 Everything above works from a terminal too, no Python required — installing the package
 puts a `mailmail` command on your `PATH`.
@@ -376,7 +376,7 @@ attachment, a message over the limit, a missing password — is reported the sam
 is from Python, before a connection opens. A partial refusal exits non-zero, so a script
 can tell.
 
-## Files you can't send
+## 7. Files you can't send
 
 Attachments a mail service would reject are reported **before sending**, as an
 exception. That beats learning it minutes later from a bounce (or from a message that
@@ -401,23 +401,38 @@ from the number the web UI shows; this is the one the server actually accepts.
 those formats. If one holds an executable it passes the check, reaches the server, and
 is refused there. Better not to use those two.
 
-## Use it from Claude Code
+## 8. Use it from an AI coding agent
 
-Install the skill into [Claude Code](https://claude.com/claude-code) and you can send
+Install the skill into [Claude Code](https://claude.com/claude-code) or Codex and you can send
 mail **by asking**, without writing Python. A skill is an instruction sheet that tells
 Claude "when a request like this comes in, do this."
 
-The repo is its own plugin marketplace, so install it from inside Claude Code:
+### 8.1 Claude Code
+
+In the Claude Code chat, add the marketplace and install:
 
 ```
 /plugin marketplace add seokhoonj/mailmail
 /plugin install mailmail@mailmail
 ```
 
-Then invoke it with `/mailmail:send` (or plain language). The skill calls the
-`mailmail` command, so install the package too (step 1). See `plugins/mailmail/skills/send/SKILL.md`.
+Then invoke it with `/mailmail:send`, or just ask in plain language. The skill calls
+the `mailmail` command, so install the package too (step 1). See `plugins/mailmail/skills/send/SKILL.md`.
 
-Prefer no plugin? Clone the repo and symlink its skill folder into the place Claude
+### 8.2 Codex
+
+In your terminal, add the marketplace and install:
+
+```
+codex plugin marketplace add seokhoonj/mailmail
+codex plugin add mailmail@mailmail
+```
+
+The `send` skill responds automatically to matching requests.
+
+### 8.3 By hand (symlink)
+
+Prefer no plugin? Clone the repo and symlink its skill folder into the place the agent
 looks:
 
 ```sh
@@ -445,7 +460,7 @@ Before sending, it **shows the recipients, subject, and attachments for approval
 Address-book names are expanded to real addresses, so you can see exactly who `team`
 reaches. Mail cannot be unsent.
 
-## When something goes wrong
+## 9. When something goes wrong
 
 The exception message states, in words, what is wrong and how to fix it.
 
@@ -459,7 +474,7 @@ The exception message states, in words, what is wrong and how to fix it.
 | `TooManyRecipientsError` | More than 100 recipients in one message. Split them across several sends |
 | `AuthenticationFailedError` | The login was refused. Check the app password is right, and for Naver that SMTP is on |
 
-## Development
+## 10. Development
 
 ```sh
 git clone https://github.com/seokhoonj/mailmail.git
