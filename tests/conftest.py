@@ -169,8 +169,8 @@ class FakeSmtp:
 def fake_smtp(monkeypatch, tmp_path):
     """Install one FakeSmtp behind smtplib.SMTP and hand it back.
 
-    The credentials file is redirected into tmp_path, so the tests neither read
-    nor write the operator's real one.
+    The XDG config dir is redirected into tmp_path, so the credential store the
+    tests read and write is a private one, never the operator's real file.
     """
     server = FakeSmtp()
 
@@ -179,7 +179,7 @@ def fake_smtp(monkeypatch, tmp_path):
         return server
 
     monkeypatch.setattr("mailmail.mailer.smtplib.SMTP", fake_smtp_class)
-    monkeypatch.setenv("MAILMAIL_CREDENTIALS", str(tmp_path / "credentials.json"))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
     # Clear the bare and every per-account password var, so the operator's real
     # environment cannot leak a password into a test.
     for key in [k for k in os.environ if k.startswith("MAILMAIL_PASSWORD")]:

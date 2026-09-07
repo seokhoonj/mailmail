@@ -30,7 +30,6 @@ __all__ = [
     "ContactError",
     "CredentialsError",
     "EncryptedArchiveError",
-    "InsecureCredentialsError",
     "InvalidMessageError",
     "MailmailError",
     "MessageTooLargeError",
@@ -132,10 +131,6 @@ class CredentialsError(MailmailError):
 
 class MissingPasswordError(CredentialsError):
     """No password is stored for the account, so authentication cannot proceed."""
-
-
-class InsecureCredentialsError(CredentialsError):
-    """The credentials file is readable by someone other than its owner."""
 
 
 class AuthenticationFailedError(CredentialsError):

@@ -122,8 +122,8 @@ def config_dir() -> Path:
     once it resolves to an absolute path; a value still relative after expansion --
     including a `~user` that names no such user -- is ignored, not an error. It has
     no override key of its own -- config cannot name the directory the config file
-    itself lives in; a caller override is per-file (`MAILMAIL_CONFIG`,
-    `MAILMAIL_CREDENTIALS`).
+    itself lives in; the config file's own location has a per-file override
+    (`MAILMAIL_CONFIG`).
 
     Raises
     ------
@@ -146,8 +146,8 @@ def config_dir() -> Path:
     except RuntimeError as err:
         raise ConfigError(
             "cannot locate ~/.config/mailmail: no home directory (HOME is unset and "
-            "the user has no passwd entry); set XDG_CONFIG_HOME, MAILMAIL_CONFIG, or "
-            "MAILMAIL_CREDENTIALS to an absolute path"
+            "the user has no passwd entry); set XDG_CONFIG_HOME or MAILMAIL_CONFIG to "
+            "an absolute path"
         ) from err
     return home / ".config" / "mailmail"
 

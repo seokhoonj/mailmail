@@ -2,9 +2,9 @@
 
 `main(argv)` returns the exit code, so every test here reads that code back
 directly. The `fake_smtp` fixture (conftest) stands in for the network and
-redirects the credentials file into tmp; `configured` writes a config file and
-stores the sending account's password, so a `send` has everything it needs
-except a real server.
+redirects the XDG config dir (and so the credential store) into tmp; `configured`
+writes a config file and stores the sending account's password, so a `send` has
+everything it needs except a real server.
 """
 
 import io
@@ -12,6 +12,7 @@ import subprocess
 import sys
 
 import pytest
+from xdg_kit import XdgKitError
 
 from mailmail import SmtpAccount, store_password
 from mailmail.cli import main
@@ -351,3 +352,16 @@ class TestUsage:
         )
         assert result.returncode == 2
         assert "usage: mailmail" in result.stderr
+
+
+class TestSetupInAHomelessEnvironment:
+    def test_it_reports_a_one_line_error_not_a_traceback(self, monkeypatch, capsys):
+        # `mailmail setup` resolves the credentials path via xdg-kit's config_dir; a
+        # container with no home makes it raise XdgKitError, which must surface as a
+        # MailmailError (exit 1, one-line message), never an uncaught traceback.
+        def no_home(_app):
+            raise XdgKitError("no home directory")
+
+        monkeypatch.setattr("mailmail.cli.config_dir", no_home)
+        assert main(["setup"]) == 1
+        assert "cannot locate the credentials file" in capsys.readouterr().err

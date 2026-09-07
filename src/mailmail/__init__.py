@@ -34,7 +34,6 @@ from mailmail.config import (
 from mailmail.contacts import AddressBook, resolve_recipients
 from mailmail.credentials import (
     PASSWORD_ENV_VAR,
-    default_credentials_path,
     delete_password,
     resolve_password,
     store_password,
@@ -48,7 +47,6 @@ from mailmail.errors import (
     ContactError,
     CredentialsError,
     EncryptedArchiveError,
-    InsecureCredentialsError,
     InvalidMessageError,
     MailmailError,
     MessageTooLargeError,
@@ -80,7 +78,6 @@ __all__ = [
     "ContactError",
     "CredentialsError",
     "EncryptedArchiveError",
-    "InsecureCredentialsError",
     "InvalidMessageError",
     "Mail",
     "MailProvider",
@@ -101,7 +98,6 @@ __all__ = [
     "compose_message",
     "config_dir",
     "default_config_path",
-    "default_credentials_path",
     "delete_password",
     "load_config",
     "resolve_password",
@@ -111,7 +107,7 @@ __all__ = [
     "store_password",
 ]
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
 
 def send(
@@ -181,9 +177,9 @@ def send(
     TooManyRecipientsError
         The message names more recipients (to + cc + bcc) than the provider
         accepts in one send; nothing was sent.
-    MissingPasswordError, InsecureCredentialsError, CredentialsError
-        No password is stored for the account, the credentials file is readable
-        by someone other than its owner, or it is not readable JSON.
+    MissingPasswordError, CredentialsError
+        No password is stored for the account, or the credentials file could not
+        be read.
     AuthenticationFailedError
         The server rejected the password; the message says what it wants instead.
     RecipientRefusedError
@@ -268,10 +264,9 @@ def send_bulk(
     Then, when the connection opens -- before the first message goes out, so
     still nothing is sent:
 
-    MissingPasswordError, InsecureCredentialsError, CredentialsError
-        No password is stored for the account, the credentials file is readable
-        by someone other than its owner, or it is not readable JSON. `ConfigError`
-        here too, when the default credentials location has no home directory.
+    MissingPasswordError, CredentialsError
+        No password is stored for the account, or the credential store could not
+        be read (including no home directory for its default location).
     AuthenticationFailedError
         The server rejected the password.
 

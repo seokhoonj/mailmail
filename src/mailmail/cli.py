@@ -23,14 +23,16 @@ import sys
 from collections.abc import Callable, Sequence
 from pathlib import Path
 
+from xdg_kit import XdgKitError, config_dir
+
 from mailmail import (
     STARTER_CONFIG,
+    ConfigError,
     Mail,
     MailmailError,
     SendReceipt,
     __version__,
     default_config_path,
-    default_credentials_path,
     load_config,
     resolve_recipients,
     send,
@@ -199,7 +201,12 @@ def _contacts_cmd(args: argparse.Namespace) -> int:
 
 def _setup_cmd(args: argparse.Namespace) -> int:
     config_path = default_config_path()
-    credentials_path = default_credentials_path()
+    try:
+        credentials_path = config_dir("mailmail") / "credentials.json"
+    except XdgKitError as err:
+        # No home directory (a container run as an arbitrary uid). Surface it as a
+        # MailmailError so main reports a one-line message, not a traceback.
+        raise ConfigError(f"cannot locate the credentials file: {err}") from err
     print(f"config file:      {config_path}  {_existence_note(config_path)}")
     print(f"credentials file: {credentials_path}  {_existence_note(credentials_path)}")
     print()

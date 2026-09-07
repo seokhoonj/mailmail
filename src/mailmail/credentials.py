@@ -1,301 +1,152 @@
 """Where the accounts' passwords are kept.
 
-Passwords live in a file only their owner can read, next to the configuration
-and well outside any directory that gets synced or committed. This is the shape
-`.netrc`, `.pgpass`, and cloud CLI credential files all take, and it is chosen
-here for the reason those tools chose it: it never prompts, so a script, a cron
-job, or an agent session works the same as a terminal.
+A password lives in a file only its owner can read, next to the configuration and
+well outside any directory that gets synced or committed. This is the shape
+`.netrc`, `.pgpass`, and cloud CLI credential files all take, and it is chosen here
+for the reason those tools chose it: it never prompts, so a script, a cron job, or an
+agent session works the same as a terminal.
 
 The trade is real and worth stating plainly. The file is not encrypted, so it
-protects against other users on the machine, not against anything running as you.
-An OS keyring would encrypt it -- but only while the keyring is *locked*, and a
-locked keyring is precisely what stops to ask for a password. Since an unlocked
-keyring hands the secret to anything running as you anyway, the encryption buys
-little here that the file permission does not, and it costs the prompt.
+protects against other users on the machine, not against anything running as you. An
+OS keyring would encrypt it -- but only while the keyring is *locked*, and a locked
+keyring is precisely what stops to ask for a password. Since an unlocked keyring hands
+the secret to anything running as you anyway, the encryption buys little here that the
+file permission does not, and it costs the prompt.
 
-What limits the damage is the credential itself: this is an app password, scoped
-to sending mail and revocable at the provider without touching the account
-password. Store nothing else here.
+What limits the damage is the credential itself: this is an app password, scoped to
+sending mail and revocable at the provider without touching the account password.
+Store nothing else here.
 
-JSON rather than TOML on purpose: `tomllib` reads TOML but cannot write it, and
-hand-rolling TOML string escaping is exactly the kind of thing that corrupts a
-password with a backslash in it and fails at 2 a.m. `json` does both halves
-correctly.
+The store itself -- its location under `config_dir()`, the 0600 file mode, the atomic
+read-modify-write, the env-over-file resolution, and stripping a pasted value's
+trailing newline -- is xdg-kit's. This module maps an account onto that store: the
+file is keyed by the account's username (the email address), while the environment is
+keyed by the account *name*, because the two answer different questions (see
+`_load_password_from_env`).
 """
 
-import json
+from __future__ import annotations
+
 import os
 import re
-import stat
-from pathlib import Path
+
+from xdg_kit import XdgKitError, get_secret, set_secret, unset_secret
 
 from mailmail.account import SmtpAccount
-from mailmail.config import config_dir
-from mailmail.errors import (
-    CredentialsError,
-    InsecureCredentialsError,
-    MissingPasswordError,
-)
+from mailmail.errors import CredentialsError, MissingPasswordError
 
 __all__ = [
-    "CREDENTIALS_FILE_MODE",
-    "CREDENTIALS_PATH_ENV_VAR",
     "PASSWORD_ENV_VAR",
-    "default_credentials_path",
     "delete_password",
     "resolve_password",
     "store_password",
 ]
 
+# The xdg-kit app whose store the passwords live in:
+# ~/.config/mailmail/credentials.json.
+_STORE_APP = "mailmail"
+
 PASSWORD_ENV_VAR = "MAILMAIL_PASSWORD"
-CREDENTIALS_PATH_ENV_VAR = "MAILMAIL_CREDENTIALS"
-
-# Owner read/write, nothing for anyone else -- what ssh demands of a private key,
-# for the same reason: a secret the group can read is not a secret.
-CREDENTIALS_FILE_MODE = 0o600
 
 
-def default_credentials_path() -> Path:
-    """Where mailmail looks for stored passwords.
+def resolve_password(account: SmtpAccount) -> str:
+    """Find the account's password: the environment first (so a one-off or a
+    container needs no file), then the stored credentials file.
 
-    `MAILMAIL_CREDENTIALS` wins; otherwise `credentials.json` in `config_dir()`,
-    beside the configuration at `~/.config/mailmail/credentials.json`.
-
-    Raises
-    ------
-    CredentialsError
-        `MAILMAIL_CREDENTIALS` names a path with an unresolvable `~user`.
-    ConfigError
-        No home directory can be found for the `~/.config` fallback (see
-        `config_dir`); the base directory is shared with the configuration.
-    """
-    override = os.environ.get(CREDENTIALS_PATH_ENV_VAR)
-    if override:
-        try:
-            return Path(override).expanduser()
-        except RuntimeError as err:
-            raise CredentialsError(
-                f"{CREDENTIALS_PATH_ENV_VAR} {override!r} names no home directory"
-            ) from err
-    return config_dir() / "credentials.json"
-
-
-def resolve_password(account: SmtpAccount, *, path: Path | None = None) -> str:
-    """Find the account's password.
-
-    Checks the environment first, so a one-off or a container can supply the
-    password without a file, then the credentials file.
-
-    `MAILMAIL_PASSWORD_<ACCOUNT>` is read before the bare `MAILMAIL_PASSWORD` --
-    with two accounts configured, the bare name cannot say which mailbox it is
-    for, and answering with it anyway sends one service's app password to the
-    other's server. See `_load_password_from_env`.
+    `MAILMAIL_PASSWORD_<ACCOUNT>` is read before the bare `MAILMAIL_PASSWORD` -- with
+    two accounts configured the bare name cannot say which mailbox it is for, and
+    answering with it anyway would send one service's app password to the other's
+    server (see `_load_password_from_env`).
 
     Raises
     ------
     MissingPasswordError
-        Neither source has a password for this account.
-    InsecureCredentialsError
-        The credentials file is readable by anyone but its owner.
+        Neither the environment nor the file has a password for this account.
     CredentialsError
-        The file exists but is not readable JSON. When `path` is omitted, resolving
-        the default location can also fail; see `default_credentials_path`.
-    ConfigError
-        When `path` is omitted, the `~/.config` home fallback has no home
-        directory; see `default_credentials_path`.
+        The credential store could not be read or was refused as unsafe (propagated
+        from the store).
     """
-    password_from_env = _load_password_from_env(account)
-    if password_from_env:
-        return password_from_env
-    path = path if path is not None else default_credentials_path()
-    # The permission gate belongs here, at the moment a password is trusted --
-    # not in the loader, which store and delete also go through. Refusing to
-    # *write* a loose file would only strand it loose; rewriting it tightens it.
-    if path.exists():
-        _check_owner_only_readable(path)
-    stored_password = _load_password_by_username(path).get(account.username)
-    if stored_password:
-        return stored_password
+    try:
+        # override carries mailmail's own env resolution; xdg-kit also probes an env
+        # var named the username, a no-op for an email address (never a valid shell
+        # variable name).
+        password = get_secret(
+            _STORE_APP, account.username, override=_load_password_from_env(account)
+        )
+    except XdgKitError as err:
+        raise CredentialsError(
+            f"the mailmail credential store could not be read: {err}"
+        ) from err
+    if password:
+        return password
     raise MissingPasswordError(
-        f"no password stored for {account.username}; put the app password from "
-        f"{account.provider.name} in {path} with store_password(account, password), "
-        f"or set {PASSWORD_ENV_VAR}"
+        f"no password stored for {account.username}; store the app password from "
+        f"{account.provider.name} with store_password(account, password), or set "
+        f"{PASSWORD_ENV_VAR}"
     )
 
 
-def store_password(
-    account: SmtpAccount, password: str, *, path: Path | None = None
-) -> None:
-    """Write the account's password to the credentials file.
-
-    Creates the file owner-readable-only, and leaves any other account's password
-    in place. Use the provider's app password, not the account's login password:
-    both Gmail and Naver refuse plain SMTP logins on accounts with two-factor
-    sign-in.
-
-    Surrounding whitespace is dropped -- a password pasted from a browser almost
-    always arrives with a trailing newline, and no server wants it.
+def store_password(account: SmtpAccount, password: str) -> None:
+    """Store the account's password in the credentials file (created owner-readable
+    only, at mode 0600), leaving any other account's password in place. Use the
+    provider's app password, not the login password: both Gmail and Naver refuse plain
+    SMTP logins on accounts with two-factor sign-in. A pasted value's surrounding
+    whitespace is stripped by the store.
 
     Raises
     ------
     CredentialsError
-        The password is empty. Storing it would be worse than storing nothing:
-        `resolve_password` would then report "no password stored" for an account
-        that does have an entry, sending the reader to look for a missing file.
-        Or the existing file is not readable JSON, so the other accounts' entries
-        cannot be preserved -- `delete_password` documents the same cause for the
-        same read-modify-write, and this half of the pair had left it out. When
-        `path` is omitted, resolving the default location can also raise; see
-        `default_credentials_path`.
-    ConfigError
-        When `path` is omitted, the `~/.config` home fallback has no home
-        directory; see `default_credentials_path`.
+        The password is empty (stored, it would read back as "no password stored" --
+        worse than storing nothing), or the store could not be read or written.
     """
-    password = password.strip()
-    if not password:
+    try:
+        set_secret(_STORE_APP, account.username, value=password)
+    except ValueError as err:  # set_secret's only ValueError is the blank-value refuse
         raise CredentialsError(
-            f"refusing to store an empty password for {account.username}; "
-            f"paste the app password from {account.provider.name}, or call "
+            f"refusing to store an empty password for {account.username}; paste the "
+            f"app password from {account.provider.name}, or call "
             f"delete_password(account) to remove the entry"
-        )
-    path = path if path is not None else default_credentials_path()
-    password_by_username = _load_password_by_username(path)
-    password_by_username[account.username] = password
-    _write_password_by_username(path, password_by_username)
+        ) from err
+    except XdgKitError as err:
+        raise CredentialsError(
+            f"could not store the password for {account.username}: {err}"
+        ) from err
 
 
-def delete_password(account: SmtpAccount, *, path: Path | None = None) -> None:
-    """Remove the account's password from the credentials file.
-
-    Does nothing when no password is stored, so revoking is safe to repeat.
+def delete_password(account: SmtpAccount) -> None:
+    """Remove the account's password from the credentials file; a no-op when none is
+    stored, so revoking is safe to repeat.
 
     Raises
     ------
     CredentialsError
-        The file exists but is not readable JSON, so the other accounts' entries
-        cannot be preserved. Worth knowing: revoking a leaked password is exactly
-        the call that ends up in a `finally`. When `path` is omitted, resolving the
-        default location can also raise; see `default_credentials_path`.
-    ConfigError
-        When `path` is omitted, the `~/.config` home fallback has no home
-        directory; see `default_credentials_path`.
+        The store could not be written (propagated from the store).
     """
-    path = path if path is not None else default_credentials_path()
-    password_by_username = _load_password_by_username(path)
-    if password_by_username.pop(account.username, None) is None:
-        return
-    _write_password_by_username(path, password_by_username)
+    try:
+        unset_secret(_STORE_APP, account.username)
+    except XdgKitError as err:
+        raise CredentialsError(
+            f"could not remove the password for {account.username}: {err}"
+        ) from err
 
 
 def _load_password_from_env(account: SmtpAccount) -> str | None:
     """The password the environment offers for this account, if any.
 
-    `MAILMAIL_PASSWORD_NAVER` beats a bare `MAILMAIL_PASSWORD`, because the bare
-    name is only unambiguous while one account exists. `resolve_password` used
-    to read it and return before looking at its `account` argument at all, so
-    with gmail and naver both configured -- which the config file positively
-    expects, demanding `default_account` once there are two -- one exported
-    password was handed to whichever server was asked.
+    `MAILMAIL_PASSWORD_NAVER` beats a bare `MAILMAIL_PASSWORD`, because the bare name
+    is only unambiguous while one account exists. Reading the bare name first, with
+    gmail and naver both configured, would hand one exported password to whichever
+    server was asked -- a disclosure (the Gmail app password lands in Naver's
+    failed-auth log), not an inconvenience. The bare name still works, and is still the
+    right thing to export when one account is configured or every account shares a
+    password.
 
-    That is a disclosure, not an inconvenience: export the variable for a Gmail
-    send, then send as naver from the same shell, and the Gmail app password
-    goes to Naver's server and lands in a failed-auth log there. The send fails
-    535, so nothing tells the sender their secret left the building.
-
-    The bare name still works, and is still the right thing to export when one
-    account is configured or when every account shares a password.
-
-    Anything a shell will not take in a variable name folds to `_`, so the name
-    that is read is the name that can be exported. TOML allows `-` and `.` in a
-    bare key, and `[accounts.me-naver]` is an ordinary thing to write -- but
-    `export MAILMAIL_PASSWORD_ME-NAVER=...` is "not a valid identifier", so
-    reading that name literally could never match. It would fall to the bare name
-    and hand one service's password to another's server: the exact disclosure
-    above, back again, with this function claiming to prevent it.
+    Anything a shell will not take in a variable name folds to `_`, so the name that is
+    read is the name that can be exported: `[accounts.me-naver]` is ordinary, but
+    `export MAILMAIL_PASSWORD_ME-NAVER=...` is not a valid identifier, so the literal
+    name could never match and would fall to the bare name -- the disclosure above,
+    again.
     """
     suffix = re.sub(r"[^A-Z0-9]", "_", account.name.upper())
     per_account = os.environ.get(f"{PASSWORD_ENV_VAR}_{suffix}")
     return per_account or os.environ.get(PASSWORD_ENV_VAR)
-
-
-def _load_password_by_username(path: Path) -> dict[str, str]:
-    """Read the store, or an empty one when the file does not exist yet.
-
-    Deliberately does not police the file mode; `resolve_password` does that
-    where it matters. See the note there.
-    """
-    if not path.exists():
-        return {}
-    try:
-        password_by_username = json.loads(path.read_text(encoding="utf-8"))
-    except OSError as err:
-        raise CredentialsError(f"{path} cannot be read: {err}") from err
-    except UnicodeDecodeError as err:
-        # A ValueError, not an OSError, so it needs its own clause -- otherwise a
-        # non-UTF-8 file would escape send()'s documented catch.
-        raise CredentialsError(f"{path} is not valid UTF-8: {err}") from err
-    except json.JSONDecodeError as err:
-        raise CredentialsError(f"{path} is not valid JSON: {err}") from err
-    if not isinstance(password_by_username, dict) or not all(
-        isinstance(password, str) for password in password_by_username.values()
-    ):
-        raise CredentialsError(
-            f"{path} should map each email address to its password"
-        )
-    return password_by_username
-
-
-def _write_password_by_username(
-    path: Path, password_by_username: dict[str, str]
-) -> None:
-    """Write the store: whole, or not at all, and never briefly readable.
-
-    Written to a new file and renamed over the target, for two reasons that both
-    bite the obvious implementation:
-
-    Opening the real file with `O_TRUNC` empties it *before* the new content is
-    written, so a crash in between leaves an empty store -- saving the second
-    account's password would destroy the first account's. `os.replace` is atomic,
-    so a reader sees either the old store or the new one.
-
-    And `O_CREAT` applies its mode only to a file it creates; an existing store
-    keeps whatever mode it had, so writing into one that had been loosened to
-    0644 would put the password on disk world-readable and only tighten it
-    afterwards. A fresh file is 0600 from the moment it exists.
-    """
-    path.parent.mkdir(parents=True, exist_ok=True)
-    staged = path.with_name(f"{path.name}.{os.getpid()}.tmp")
-    try:
-        descriptor = os.open(
-            staged, os.O_WRONLY | os.O_CREAT | os.O_EXCL, CREDENTIALS_FILE_MODE
-        )
-        with os.fdopen(descriptor, "w", encoding="utf-8") as store:
-            json.dump(password_by_username, store, indent=2, ensure_ascii=False)
-            store.write("\n")
-        os.replace(staged, path)
-    except BaseException:
-        staged.unlink(missing_ok=True)
-        raise
-
-
-def _check_owner_only_readable(path: Path) -> None:
-    """Refuse a credentials file that other users can read.
-
-    POSIX only, because the mode is only real there. Windows has no group or
-    other bits to inspect: `os.stat` synthesises `st_mode` from the read-only
-    attribute alone, reporting 0o666 for an ordinary file and 0o444 for a
-    read-only one, so this test matched every file that exists -- including the
-    one `store_password` had just written -- and sent the reader off to run
-    `chmod`, which Windows does not have. Nor could they have fixed it there:
-    `os.chmod` on Windows "can only set the file's read-only flag... All other
-    bits are ignored" (CPython os docs). What guards the file there is the ACL on
-    the user's profile directory, which is not ours to read without a dependency.
-    """
-    if os.name != "posix":
-        return
-    if not (path.stat().st_mode & (stat.S_IRWXG | stat.S_IRWXO)):
-        return
-    raise InsecureCredentialsError(
-        f"{path} is readable by more than its owner; passwords must not be. "
-        f"Fix it with: chmod 600 {path}"
-    )

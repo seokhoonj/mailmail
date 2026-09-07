@@ -138,12 +138,9 @@ class Mailer:
             The message is over the server's limit.
         TooManyRecipientsError
             The message names more recipients than the provider takes in one send.
-        MissingPasswordError, InsecureCredentialsError, CredentialsError
-            No password is stored, the credentials file is readable by others, or
-            it is not readable JSON.
-        ConfigError
-            No home directory can be found for the default credentials location;
-            see `resolve_password`.
+        MissingPasswordError, CredentialsError
+            No password is stored, or the credential store could not be read
+            (including no home directory for its default location).
         AuthenticationFailedError
             The server rejected the password. Note this is a `MailmailError`, not
             an `smtplib.SMTPException` -- authentication is the one session

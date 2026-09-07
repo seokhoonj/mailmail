@@ -7,7 +7,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "mailmail"
-version = "0.2.0"
+version = "0.3.0"
 description = "Send mail through Gmail or Naver SMTP, with the provider's own rules checked before anything is sent."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -27,10 +27,10 @@ classifiers = [
     "Topic :: Communications :: Email",
     "Typing :: Typed",
 ]
-# No runtime dependencies on purpose: smtplib, email, tomllib, and json carry the
-# whole package, and a mail sender that never breaks on someone else's release is
-# worth more than any convenience a third party would add.
-dependencies = []
+# xdg-kit owns the credential store: config_dir, the 0600 credentials.json, atomic writes,
+# and env-over-file resolution. It is the one runtime dependency, and it is itself
+# zero-dependency, so the package still pulls in no third-party code it does not control.
+dependencies = ["xdg-kit>=0.2"]
 
 [project.scripts]
 mailmail = "mailmail.cli:main"
