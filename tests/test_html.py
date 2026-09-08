@@ -185,7 +185,7 @@ class TestTheCardIsValidStandalone:
         positional `max_width`."""
         layout = HTMLLayout()
         with pytest.raises(TypeError):
-            layout.render([layout.section("S")], 720, "center")  # type: ignore[misc]
+            layout.render([layout.section("S")], 720, "center")  # type: ignore[call-arg]
 
 
 class TestParagraphPlacement:
