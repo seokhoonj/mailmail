@@ -58,6 +58,7 @@ from mailmail.errors import (
     UnknownProviderError,
     UnscannableArchiveError,
 )
+from mailmail.html import HTMLLayout, Theme
 from mailmail.mailer import Mailer, SendReceipt
 from mailmail.message import Mail, Message, compose_message
 from mailmail.provider import GMAIL, NAVER, MailProvider, SmtpSecurity
@@ -78,6 +79,7 @@ __all__ = [
     "ContactError",
     "CredentialsError",
     "EncryptedArchiveError",
+    "HTMLLayout",
     "InvalidMessageError",
     "Mail",
     "MailProvider",
@@ -90,6 +92,7 @@ __all__ = [
     "SendReceipt",
     "SmtpAccount",
     "SmtpSecurity",
+    "Theme",
     "TooManyRecipientsError",
     "UnknownAccountError",
     "UnknownContactError",
