@@ -20,6 +20,13 @@ from typing import NamedTuple
 
 import pytest
 
+# `mailmail.credentials` binds its store via `Credentials.for_app`, which reads
+# MAILMAIL_STORE_APP / MAILMAIL_NAMESPACE at import time. Clear a developer's shell
+# values here (before any test module imports mailmail) so the suite exercises the
+# standalone binding, not an inherited redirect.
+os.environ.pop("MAILMAIL_STORE_APP", None)
+os.environ.pop("MAILMAIL_NAMESPACE", None)
+
 
 @pytest.fixture
 def unresolvable_tilde(monkeypatch):
