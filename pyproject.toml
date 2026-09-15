@@ -30,7 +30,7 @@ classifiers = [
 # credbox owns the credential store: config_dir, the 0600 credentials.json, atomic writes,
 # and env-over-file resolution. It is the one runtime dependency, and it is itself
 # zero-dependency, so the package still pulls in no third-party code it does not control.
-dependencies = ["credbox>=0.2.0,<0.3"]
+dependencies = ["credbox>=0.3.0,<0.4"]
 
 [project.scripts]
 mailmail = "mailmail.cli:main"

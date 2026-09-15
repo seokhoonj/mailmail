@@ -42,11 +42,14 @@ __all__ = [
     "store_password",
 ]
 
-# The credbox app whose store the passwords live in:
-# ~/.config/mailmail/credentials.json. One facade, reused across calls; credbox resolves
-# the store path per call, so a test that repoints XDG_CONFIG_HOME still isolates it.
+# The credbox app for mailmail's own store, ~/.config/mailmail/credentials.json.
+# `for_app` (not the bare `Credentials(...)`) makes mailmail embeddable: a host that
+# sets MAILMAIL_STORE_APP / MAILMAIL_NAMESPACE before importing mailmail redirects the
+# binding into the host's own store under a "mailmail" section, no code change here.
+# credbox resolves the store path per call, so a test repointing XDG_CONFIG_HOME still
+# isolates it.
 _STORE_APP = "mailmail"
-_store = Credentials(_STORE_APP)
+_store = Credentials.for_app(_STORE_APP)
 
 PASSWORD_ENV_VAR = "MAILMAIL_PASSWORD"
 
