@@ -12,7 +12,7 @@ import subprocess
 import sys
 
 import pytest
-from xdg_kit import XdgKitError
+from credbox import CredBoxError
 
 from mailmail import SmtpAccount, store_password
 from mailmail.cli import main
@@ -356,11 +356,11 @@ class TestUsage:
 
 class TestSetupInAHomelessEnvironment:
     def test_it_reports_a_one_line_error_not_a_traceback(self, monkeypatch, capsys):
-        # `mailmail setup` resolves the credentials path via xdg-kit's config_dir; a
-        # container with no home makes it raise XdgKitError, which must surface as a
+        # `mailmail setup` resolves the credentials path via credbox's config_dir; a
+        # container with no home makes it raise CredBoxError, which must surface as a
         # MailmailError (exit 1, one-line message), never an uncaught traceback.
         def no_home(_app):
-            raise XdgKitError("no home directory")
+            raise CredBoxError("no home directory")
 
         monkeypatch.setattr("mailmail.cli.config_dir", no_home)
         assert main(["setup"]) == 1

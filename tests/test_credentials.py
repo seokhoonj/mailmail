@@ -1,7 +1,7 @@
 """mailmail's password handling: environment resolution, account mapping, and errors.
 
 The store itself -- the file location, 0600 mode, atomic write, whitespace stripping,
-and blank rejection -- is xdg-kit's and tested there. These cover only what mailmail
+and blank rejection -- is credbox's and tested there. These cover only what mailmail
 adds on top: resolving the environment before the file, keying the file by the
 account's username while the environment is keyed by the account name, and wrapping the
 store's failures in mailmail's own error type.
@@ -10,7 +10,7 @@ store's failures in mailmail's own error type.
 import os
 
 import pytest
-from xdg_kit import XdgKitError, config_dir
+from credbox import CredBoxError, config_dir
 
 from mailmail.account import SmtpAccount
 from mailmail.credentials import delete_password, resolve_password, store_password
@@ -103,6 +103,14 @@ class TestEnvironmentOverride:
         assert resolve_password(NAVER_ACCOUNT) == "from-env"
         assert not _store_path().exists()
 
+    def test_a_blank_env_var_reads_as_absent(self, monkeypatch):
+        # An exported-but-empty MAILMAIL_PASSWORD must read as absent, not resolve to ""
+        # (SMTP rejects a blank password): it falls through, so with no file it is a
+        # clear MissingPasswordError.
+        monkeypatch.setenv("MAILMAIL_PASSWORD", "")
+        with pytest.raises(MissingPasswordError):
+            resolve_password(NAVER_ACCOUNT)
+
 
 class TestDelete:
     def test_deleting_removes_only_that_account(self):
@@ -127,7 +135,7 @@ class TestDelete:
 
 
 class TestAMalformedStoreSurfacesAsCredentialsError:
-    # The store's own read errors are xdg-kit's; mailmail's job is only to wrap them in
+    # The store's own read errors are credbox's; mailmail's job is only to wrap them in
     # its own error type so a caller's `except CredentialsError` still holds.
     def _plant(self, contents):
         path = _store_path()
@@ -159,9 +167,9 @@ class TestStoreFailuresWrapAsCredentialsError:
         secret = "sk-NEVER-LEAK-THIS"
 
         def fail(*args, **kwargs):
-            raise XdgKitError("backend write failed")
+            raise CredBoxError("backend write failed")
 
-        monkeypatch.setattr("mailmail.credentials.set_secret", fail)
+        monkeypatch.setattr("mailmail.credentials._store.set", fail)
         with pytest.raises(CredentialsError) as caught:
             store_password(NAVER_ACCOUNT, secret)
         error: BaseException | None = caught.value
@@ -171,9 +179,9 @@ class TestStoreFailuresWrapAsCredentialsError:
 
     def test_a_delete_failure_is_a_credentials_error(self, monkeypatch):
         def fail(*args, **kwargs):
-            raise XdgKitError("backend write failed")
+            raise CredBoxError("backend write failed")
 
-        monkeypatch.setattr("mailmail.credentials.unset_secret", fail)
+        monkeypatch.setattr("mailmail.credentials._store.unset", fail)
         with pytest.raises(CredentialsError):
             delete_password(NAVER_ACCOUNT)
 

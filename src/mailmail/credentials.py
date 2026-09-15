@@ -19,7 +19,7 @@ Store nothing else here.
 
 The store itself -- its location under `config_dir()`, the 0600 file mode, the atomic
 read-modify-write, the env-over-file resolution, and stripping a pasted value's
-trailing newline -- is xdg-kit's. This module maps an account onto that store: the
+trailing newline -- is credbox's. This module maps an account onto that store: the
 file is keyed by the account's username (the email address), while the environment is
 keyed by the account *name*, because the two answer different questions (see
 `_load_password_from_env`).
@@ -30,7 +30,7 @@ from __future__ import annotations
 import os
 import re
 
-from xdg_kit import XdgKitError, get_secret, set_secret, unset_secret
+from credbox import BlankSecretError, CredBoxError, Credentials
 
 from mailmail.account import SmtpAccount
 from mailmail.errors import CredentialsError, MissingPasswordError
@@ -42,9 +42,11 @@ __all__ = [
     "store_password",
 ]
 
-# The xdg-kit app whose store the passwords live in:
-# ~/.config/mailmail/credentials.json.
+# The credbox app whose store the passwords live in:
+# ~/.config/mailmail/credentials.json. One facade, reused across calls; credbox resolves
+# the store path per call, so a test that repoints XDG_CONFIG_HOME still isolates it.
 _STORE_APP = "mailmail"
+_store = Credentials(_STORE_APP)
 
 PASSWORD_ENV_VAR = "MAILMAIL_PASSWORD"
 
@@ -67,18 +69,18 @@ def resolve_password(account: SmtpAccount) -> str:
         from the store).
     """
     try:
-        # override carries mailmail's own env resolution; xdg-kit also probes an env
+        # override carries mailmail's own env resolution; credbox also probes an env
         # var named the username, a no-op for an email address (never a valid shell
         # variable name).
-        password = get_secret(
-            _STORE_APP, account.username, override=_load_password_from_env(account)
+        secret = _store.secret(
+            account.username, override=_load_password_from_env(account)
         )
-    except XdgKitError as err:
+    except CredBoxError as err:
         raise CredentialsError(
             f"the mailmail credential store could not be read: {err}"
         ) from err
-    if password:
-        return password
+    if secret is not None:
+        return secret.reveal()
     raise MissingPasswordError(
         f"no password stored for {account.username}; store the app password from "
         f"{account.provider.name} with store_password(account, password), or set "
@@ -100,14 +102,14 @@ def store_password(account: SmtpAccount, password: str) -> None:
         worse than storing nothing), or the store could not be read or written.
     """
     try:
-        set_secret(_STORE_APP, account.username, value=password)
-    except ValueError as err:  # set_secret's only ValueError is the blank-value refuse
+        _store.set(account.username, value=password)
+    except BlankSecretError as err:
         raise CredentialsError(
             f"refusing to store an empty password for {account.username}; paste the "
             f"app password from {account.provider.name}, or call "
             f"delete_password(account) to remove the entry"
         ) from err
-    except XdgKitError as err:
+    except CredBoxError as err:
         raise CredentialsError(
             f"could not store the password for {account.username}: {err}"
         ) from err
@@ -123,8 +125,8 @@ def delete_password(account: SmtpAccount) -> None:
         The store could not be written (propagated from the store).
     """
     try:
-        unset_secret(_STORE_APP, account.username)
-    except XdgKitError as err:
+        _store.unset(account.username)
+    except CredBoxError as err:
         raise CredentialsError(
             f"could not remove the password for {account.username}: {err}"
         ) from err
