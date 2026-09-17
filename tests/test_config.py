@@ -11,6 +11,7 @@ from mailmail.config import (
     add_group,
     config_dir,
     default_config_path,
+    import_contacts,
     load_config,
 )
 from mailmail.errors import (
@@ -153,6 +154,13 @@ class TestNewFormatAccounts:
         )
         assert config.resolve_account().provider.smtp_host == "smtp.gmail.com"
 
+    def test_a_non_string_provider_is_refused_not_ignored(self, tmp_path):
+        # A wrong-typed provider must be rejected like the sibling email/alias fields,
+        # not silently fall through to domain inference and hide the malformed config.
+        toml = '[[accounts]]\nemail = "me@naver.com"\nprovider = 123\n'
+        with pytest.raises(ConfigError, match="provider must be a string"):
+            load_config(_write_config(tmp_path, toml))
+
     def test_two_accounts_sharing_a_handle_are_refused(self, tmp_path):
         toml = (
             'default_account = "me"\n'
@@ -255,14 +263,80 @@ class TestWriting:
             tmp_path,
             'contacts = "oops"\n[[accounts]]\nemail = "me@naver.com"\nalias = "me"\n',
         )
+        before = path.read_text(encoding="utf-8")
         with pytest.raises(ConfigError, match="cannot update the configuration"):
             add_contact("lead", "lead@example.com", path=path)
+        assert path.read_text(encoding="utf-8") == before  # refused edit wrote nothing
 
     def test_add_contact_wraps_an_unsupported_file_as_config_error(self, tmp_path):
         # An existing file tomlite will not edit safely (a dotted key): it loads, but
         # the first edit is refused. That refusal must surface as a ConfigError too.
         path = _write_config(tmp_path, "a.b = 1\n")
+        before = path.read_text(encoding="utf-8")
         with pytest.raises(ConfigError, match="cannot update the configuration"):
+            add_contact("lead", "lead@example.com", path=path)
+        assert path.read_text(encoding="utf-8") == before
+
+    def test_import_contacts_writes_all_pairs_in_one_pass(self, tmp_path):
+        path = tmp_path / "config.toml"
+        add_account(account_for("me@naver.com", alias="personal"), path=path)
+        written = import_contacts(
+            [("lead", "lead@example.com"), ("jane.doe", "jane@example.com")], path=path
+        )
+        assert written == 2
+        book = load_config(path).address_book
+        assert book["lead"] == ("lead@example.com",)
+        assert book["jane.doe"] == ("jane@example.com",)  # a dotted name is quoted
+
+    def test_import_contacts_updates_an_existing_contact(self, tmp_path):
+        path = tmp_path / "config.toml"
+        add_account(account_for("me@naver.com", alias="personal"), path=path)
+        add_contact("lead", "old@example.com", path=path)
+        import_contacts([("lead", "new@example.com")], path=path)
+        assert load_config(path).address_book["lead"] == ("new@example.com",)
+
+    def test_import_contacts_is_all_or_nothing_on_a_bad_pair(self, tmp_path):
+        path = tmp_path / "config.toml"
+        add_account(account_for("me@naver.com", alias="personal"), path=path)
+        before = path.read_text(encoding="utf-8")
+        with pytest.raises(InvalidAddressError, match="not a valid email"):
+            import_contacts(
+                [("lead", "lead@example.com"), ("bad", "not-an-email")], path=path
+            )
+        # the valid first pair is not written either -- validation is before the write
+        assert path.read_text(encoding="utf-8") == before
+
+    def test_import_contacts_rejects_an_empty_list(self, tmp_path):
+        with pytest.raises(ConfigError, match="no contacts to import"):
+            import_contacts([], path=tmp_path / "config.toml")
+
+    def test_import_contacts_refuses_a_duplicate_name(self, tmp_path):
+        path = tmp_path / "config.toml"
+        add_account(account_for("me@naver.com", alias="personal"), path=path)
+        before = path.read_text(encoding="utf-8")
+        with pytest.raises(ConfigError, match="named more than once"):
+            import_contacts([("lead", "a@x.com"), ("lead", "b@x.com")], path=path)
+        assert path.read_text(encoding="utf-8") == before  # nothing written on a dup
+
+    def test_import_contacts_untouched_when_an_edit_is_refused(self, tmp_path):
+        # `contacts` is a top-level key, so opening [contacts] is refused; the whole
+        # import must abort, leaving the file byte-for-byte as it was, not half-written.
+        path = _write_config(
+            tmp_path,
+            'contacts = "oops"\n[[accounts]]\nemail = "me@naver.com"\nalias = "me"\n',
+        )
+        before = path.read_text(encoding="utf-8")
+        with pytest.raises(ConfigError, match="cannot update the configuration"):
+            import_contacts([("lead", "lead@example.com")], path=path)
+        assert path.read_text(encoding="utf-8") == before
+
+    def test_a_non_utf8_config_is_a_config_error_on_the_edit_path(self, tmp_path):
+        # A cp949 (Korean spreadsheet) config.toml is not valid UTF-8; tomlite refuses
+        # it at load. The write path must surface that as a ConfigError, like the read
+        # path, not leak a foreign TomliteError past the MailmailError catch surface.
+        path = tmp_path / "config.toml"
+        path.write_bytes('name = "홍길동"\n'.encode("cp949"))
+        with pytest.raises(ConfigError, match="cannot read configuration"):
             add_contact("lead", "lead@example.com", path=path)
 
 

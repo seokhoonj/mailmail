@@ -3,9 +3,12 @@ the address book on disk.
 
 `config_dir()` resolves the directory `config.toml` lives in through credbox's own
 `config_dir`, the same resolver credbox uses for the `0600` `credentials.json` beside
-it -- so the two files share one directory by construction, on every platform and
-under every override, rather than by two resolvers agreeing. There is no data or
-state directory -- mailmail sends and forgets, writing nothing durable to relocate.
+it -- so by default, and on every platform, the two files share one directory by
+construction rather than by two resolvers agreeing. The one override that parts them is
+deliberate: `MAILMAIL_STORE_APP` redirects only the *store* (to fold a mail setup into a
+host program's shared credentials), leaving this non-secret config where it is. There is
+no data or state directory -- mailmail sends and forgets, writing nothing durable to
+relocate.
 
 The directory lives outside any checkout because a mail setup is a property of the
 machine, not of a project -- and because a project directory is exactly the kind of
@@ -42,6 +45,7 @@ __all__ = [
     "add_group",
     "config_dir",
     "default_config_path",
+    "import_contacts",
     "load_config",
 ]
 
@@ -125,14 +129,16 @@ def config_dir() -> Path:
     `credentials.json` beside it.
 
     Delegated to credbox's `config_dir`, so the config this module writes and the
-    credential store credbox writes always resolve to the *same* directory -- on
-    every platform and under every override -- instead of two hand-rolled resolvers
-    that could drift apart. It is `$XDG_CONFIG_HOME/mailmail` when that holds an
-    absolute path, else `~/.config/mailmail` (the git / ssh / aws convention); a
-    relative, blank, or unresolvable `XDG_CONFIG_HOME` is ignored per the XDG spec.
-    `MAILMAIL_CONFIG_DIR` is an absolute-path override credbox honors for both files
-    at once; the config *file* keeps its own per-file override, `MAILMAIL_CONFIG`
-    (see `default_config_path`).
+    credential store credbox writes resolve to the *same* directory -- co-located by
+    construction under whatever layout credbox is on -- instead of two hand-rolled
+    resolvers that could drift apart. By default that is `$XDG_CONFIG_HOME/mailmail`
+    when that holds an absolute path, else `~/.config/mailmail` (the git / ssh / aws
+    convention; a relative, blank, or unresolvable `XDG_CONFIG_HOME` is ignored per the
+    XDG spec). It follows credbox's layout, so a machine or host that puts credbox on
+    the native layout (`CREDBOX_LAYOUT=native`) moves the config to the OS-native dir --
+    but the store moves with it, so the two stay together. `MAILMAIL_CONFIG_DIR` is an
+    absolute-path override credbox honors for both files at once; the config *file*
+    keeps its own per-file override, `MAILMAIL_CONFIG` (see `default_config_path`).
 
     Raises
     ------
@@ -230,10 +236,8 @@ def add_account(account: SmtpAccount, *, path: Path | str | None = None) -> None
         The configuration path cannot be resolved (see `config_dir`), or the file could
         not be written.
     """
-    target = _resolve_path(path)
-    document = _load_document(target)
-    with _editing(target):
-        _refuse_legacy_accounts(document, path=target)
+    with _editing_config(path) as document:
+        _refuse_legacy_accounts(document, path=_resolve_path(path))
         if not document.has_in_array(
             "accounts", match_field="email", match_value=account.email
         ):
@@ -247,7 +251,6 @@ def add_account(account: SmtpAccount, *, path: Path | str | None = None) -> None
                 field="alias", value=account.alias,
             )
         document.set_root_key("default_account", account.handle, only_if_absent=True)
-    _write(document, target)
 
 
 def add_contact(name: str, address: str, *, path: Path | str | None = None) -> None:
@@ -264,11 +267,8 @@ def add_contact(name: str, address: str, *, path: Path | str | None = None) -> N
     """
     _validate_contact_name(name)
     _validate_email(address)
-    target = _resolve_path(path)
-    document = _load_document(target)
-    with _editing(target):
+    with _editing_config(path) as document:
         document.set_table_key("contacts", name, address)
-    _write(document, target)
 
 
 def add_group(
@@ -294,40 +294,91 @@ def add_group(
     for member in members:
         if "@" in member:
             _validate_email(member)
-    target = _resolve_path(path)
-    document = _load_document(target)
-    with _editing(target):
+    with _editing_config(path) as document:
         document.set_table_key("contacts", name, tuple(members))
-    _write(document, target)
+
+
+def import_contacts(
+    contacts: Sequence[tuple[str, str]], *, path: Path | str | None = None
+) -> int:
+    """Add or update many address-book contacts at once, each a `name` pointing at a
+    single `address`, and return how many were written. Every pair is validated first;
+    only if all pass is the file written -- one atomic write -- so a bad row leaves the
+    file untouched rather than half-imported. Comments and other entries are preserved,
+    and a name already in the book has its address replaced. Used for a bulk load where
+    running `add_contact` once per row would rewrite the file once per row.
+
+    Raises
+    ------
+    InvalidAddressError
+        A name looks like an address (an `@`) or is blank, or an address is not a
+        well-formed email. Raised before anything is written, so nothing is stored.
+    ConfigError
+        `contacts` is empty or names one contact twice, the path cannot be resolved, or
+        the file could not be read or written.
+    """
+    if not contacts:
+        raise ConfigError("no contacts to import")
+    seen: set[str] = set()
+    for name, address in contacts:
+        _validate_contact_name(name)
+        _validate_email(address)
+        if name in seen:
+            # A repeated name would silently keep only the last address and make the
+            # returned count overstate what was written -- refuse it, as the config
+            # refuses two accounts sharing a handle, rather than guess which was meant.
+            raise ConfigError(f"contact {name!r} is named more than once in the import")
+        seen.add(name)
+    with _editing_config(path) as document:
+        for name, address in contacts:
+            document.set_table_key("contacts", name, address)
+    return len(contacts)
 
 
 def _load_document(target: Path) -> TOMLEditor:
     """Read the config for editing, turning a read failure into a ConfigError (a missing
-    file is not one -- it yields an empty document to write into). tomlite defers its
-    refusal of a file it cannot edit safely to the first edit, not the load, so that is
-    caught by `_editing`, not here."""
+    file is not one -- it yields an empty document to write into).
+
+    tomlite refuses a file that is not valid TOML at two different moments: a bad
+    *encoding* (not UTF-8, as a cp949 spreadsheet export is) is refused here at load,
+    while an unsupported *grammar* (a dotted key, a multi-line string) is refused at the
+    first edit and caught by `_editing`. Both are `TomliteError`; translate the
+    load-time one so a non-UTF-8 config fails the write path with the same ConfigError
+    the read path (`load_config`) already gives it, not a foreign exception past the
+    `MailmailError` surface the CLI catches."""
     try:
         return TOMLEditor.load(target)
     except OSError as err:
         raise ConfigError(f"cannot read configuration at {target}: {err}") from err
+    except TomliteError as err:
+        # tomlite's message already names the path, so don't prefix it again.
+        raise ConfigError(f"cannot read configuration: {err}") from err
 
 
 @contextmanager
-def _editing(target: Path) -> Iterator[None]:
-    """Translate a tomlite refusal into a ConfigError while a setup command edits.
+def _editing_config(path: Path | str | None) -> Iterator[TOMLEditor]:
+    """Open the config for a setup command and save it afterward -- the resolve -> load
+    -> edit -> write lifecycle every setup command shares, in one place.
 
-    tomlite refuses rather than corrupts, and defers that refusal to the first edit: an
-    existing file it cannot edit safely (a multi-line string, a dotted key) and an edit
-    that would make the file invalid TOML both fail at the call with a `TomliteError`,
-    which would otherwise escape the `MailmailError` surface the CLI and `send` catch.
-    Wrap the edit so a setup command reports one clean line instead of a foreign type.
+    Resolve the path, load the document (a read failure -- an I/O error, or a non-UTF-8
+    file tomlite refuses at load -- becomes ConfigError in `_load_document`), yield it
+    for edits, then write it back. tomlite refuses rather than corrupts and defers a
+    *grammar* refusal to the first edit: an existing file it cannot edit safely (a
+    dotted key), or
+    an edit that would make the file invalid, raises `TomliteError` here, which is
+    translated to ConfigError so a setup command reports one clean line inside the
+    `MailmailError` surface -- and, because the write is then skipped, a refused edit
+    leaves the file untouched.
     """
+    target = _resolve_path(path)
+    document = _load_document(target)
     try:
-        yield
+        yield document
     except TomliteError as err:
         raise ConfigError(
             f"cannot update the configuration at {target}: {err}"
         ) from err
+    _write(document, target)
 
 
 def _write(document: TOMLEditor, target: Path) -> None:
@@ -436,14 +487,14 @@ def _as_config(document: dict[str, Any], *, path: Path) -> Config:
                 f"give one a distinct alias"
             )
         account_by_handle[account.handle] = account
-    colliding = colliding_env_var_prefixes(account_by_handle)
-    if colliding:
+    collisions = colliding_env_var_prefixes(account_by_handle)
+    if collisions:
         # Handles that differ only in punctuation fold to one password env var
         # (`me-naver` and `me.naver` both -> MAILMAIL_PASSWORD_ME_NAVER), so an
         # exported password could not say which account it is for -- the very
         # disclosure the per-account name exists to prevent. Refuse the config, as
         # the shared-handle check just above does, rather than resolve it silently.
-        prefix, names = min(colliding.items())
+        prefix, names = min(collisions.items())
         raise ConfigError(
             f"{path}: accounts {' and '.join(map(repr, names))} both fold to the "
             f"password environment variable {PASSWORD_ENV_VAR}_{prefix}, so an "
@@ -517,7 +568,10 @@ def _as_account_table(item: object, *, path: Path) -> SmtpAccount:
             f"{path}: [[accounts]].alias must be a string, not "
             f"{type(alias).__name__}"
         )
-    return SmtpAccount(email=email, alias=alias, provider=_provider_of(item, email))
+    return SmtpAccount(
+        email=email, alias=alias,
+        provider=_provider_of(item, email, path=path, label="[[accounts]]"),
+    )
 
 
 def _as_legacy_account(name: str, table: object, *, path: Path) -> SmtpAccount:
@@ -526,7 +580,10 @@ def _as_legacy_account(name: str, table: object, *, path: Path) -> SmtpAccount:
     if not isinstance(table, dict):
         raise ConfigError(f"{path}: [accounts.{name}] must be a table")
     email = _account_string(table, "username", path=path, label=f"[accounts.{name}]")
-    return SmtpAccount(email=email, alias=name, provider=_provider_of(table, email))
+    return SmtpAccount(
+        email=email, alias=name,
+        provider=_provider_of(table, email, path=path, label=f"[accounts.{name}]"),
+    )
 
 
 def _account_string(
@@ -547,13 +604,21 @@ def _account_string(
     return value
 
 
-def _provider_of(table: dict[str, Any], email: str) -> MailProvider:
+def _provider_of(
+    table: dict[str, Any], email: str, *, path: Path, label: str
+) -> MailProvider:
     """The account's provider: the explicit `provider` key when present (a known
-    provider on an off-list domain), else inferred from the address's domain."""
+    provider on an off-list domain), else inferred from the address's domain. A
+    present-but-non-string `provider` is refused, not silently ignored -- the same
+    boundary check the sibling `email`/`alias` fields get."""
     named = table.get("provider")
-    if isinstance(named, str):
-        return resolve_provider(named)
-    return provider_for_email(email)
+    if named is None:
+        return provider_for_email(email)
+    if not isinstance(named, str):
+        raise ConfigError(
+            f"{path}: {label}.provider must be a string, not {type(named).__name__}"
+        )
+    return resolve_provider(named)
 
 
 def _as_address_book(table: object, *, path: Path) -> AddressBook:

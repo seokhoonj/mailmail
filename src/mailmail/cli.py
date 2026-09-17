@@ -37,6 +37,7 @@ from mailmail import (
     add_contact,
     add_group,
     default_config_path,
+    import_contacts,
     load_config,
     resolve_recipients,
     send,
@@ -51,6 +52,10 @@ __all__ = ["main"]
 # field separator CSV already spends.
 REQUIRED_CSV_COLUMNS = ("to", "subject", "body")
 LIST_CELL_DELIMITER = ";"
+
+# import-contacts CSV columns. A row is one contact: a `name` (the alias) and the
+# single `email` it stands for.
+CONTACT_CSV_COLUMNS = ("name", "email")
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -187,6 +192,18 @@ def _build_parser() -> argparse.ArgumentParser:
                                   help="a configuration file other than the default")
     add_group_parser.set_defaults(handler=_add_group_cmd)
 
+    import_contacts_parser = subcommands.add_parser(
+        "import-contacts",
+        help="add or update many address-book contacts from a CSV file at once",
+    )
+    import_contacts_parser.add_argument(
+        "csv", type=Path, metavar="CSV",
+        help="a CSV with `name` and `email` columns, one contact per row")
+    import_contacts_parser.add_argument(
+        "--config", type=Path, metavar="PATH",
+        help="a configuration file other than the default")
+    import_contacts_parser.set_defaults(handler=_import_contacts_cmd)
+
     return parser
 
 
@@ -261,7 +278,17 @@ def _set_password_cmd(args: argparse.Namespace) -> int:
     # Prompted, never taken as an argument: a password on the command line lands in the
     # shell history and in `ps`. Prompt before writing, so a cancelled prompt leaves no
     # half-configured account behind.
-    password = getpass.getpass(f"{account.email} app password: ")
+    try:
+        password = getpass.getpass(f"{account.email} app password: ")
+    except EOFError as err:
+        # stdin is not a terminal (`set-password ... < /dev/null`, a non-interactive
+        # runner): getpass raises EOFError, which is outside main's catch surface and
+        # would traceback. Report it as the one-line MailmailError the CLI otherwise
+        # gives for bad input.
+        raise ConfigError(
+            "cannot read a password: stdin is not a terminal; run set-password "
+            "interactively, or set MAILMAIL_PASSWORD"
+        ) from err
     add_account(account, path=args.config)
     store_password(account, password)
     print(f"stored the app password for {account.handle}")
@@ -277,6 +304,12 @@ def _add_contact_cmd(args: argparse.Namespace) -> int:
 def _add_group_cmd(args: argparse.Namespace) -> int:
     add_group(args.name, tuple(args.member), path=args.config)
     print(f"added group {args.name} -> {', '.join(args.member)}")
+    return 0
+
+
+def _import_contacts_cmd(args: argparse.Namespace) -> int:
+    written = import_contacts(_read_contacts(args.csv), path=args.config)
+    print(f"imported {written} contact{'' if written == 1 else 's'}")
     return 0
 
 
@@ -351,6 +384,46 @@ def _read_mails(path: Path) -> list[Mail]:
                 f"the header needs {', '.join(REQUIRED_CSV_COLUMNS)}"
             )
         return [_mail_from_row(row) for row in reader]
+
+
+def _read_contacts(path: Path) -> list[tuple[str, str]]:
+    """Read an import-contacts CSV into `(name, address)` pairs.
+
+    The header names the columns: `name` and `email` are required, any others are
+    ignored. Surrounding whitespace is trimmed from each cell (a spreadsheet export
+    leaves it), and a wholly blank line -- a trailing newline, most often -- is skipped
+    rather than read as an empty contact. Nothing else is validated here;
+    `import_contacts` checks each name and address, so one place owns that.
+
+    Raises
+    ------
+    csv.Error
+        The file has no header, or the header is missing a required column. Raised as
+        `csv.Error` so it flows through `main`'s one error funnel to a message and exit
+        1, the way `send-bulk` does -- not out the side as a `SystemExit`.
+    """
+    # utf-8-sig for the same reason send-bulk uses it: a spreadsheet "UTF-8 CSV" export
+    # writes a BOM that plain utf-8 would fold into the first header, so `name` would
+    # read as a different column and the required-column check would reject a good file.
+    with path.open(encoding="utf-8-sig", newline="") as handle:
+        reader = csv.DictReader(handle)
+        if reader.fieldnames is None:
+            raise csv.Error(f"{path} is empty; it needs a header row")
+        missing = [column for column in CONTACT_CSV_COLUMNS
+                   if column not in reader.fieldnames]
+        if missing:
+            raise csv.Error(
+                f"{path} is missing the required column(s) {', '.join(missing)}; "
+                f"the header needs {', '.join(CONTACT_CSV_COLUMNS)}"
+            )
+        pairs: list[tuple[str, str]] = []
+        for row in reader:
+            name = (row.get("name") or "").strip()
+            address = (row.get("email") or "").strip()
+            if not name and not address:
+                continue
+            pairs.append((name, address))
+        return pairs
 
 
 def _mail_from_row(row: dict[str, str | None]) -> Mail:

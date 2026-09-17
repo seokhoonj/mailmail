@@ -378,11 +378,14 @@ mailmail contacts                      # the accounts and address-book names you
 mailmail set-password you@naver.com --alias personal  # writes config + stores the app password
 mailmail add-contact lead lead@example.com            # add an address-book alias
 mailmail add-group   team manager lead                # a group of addresses or aliases
+mailmail import-contacts contacts.csv                 # add many at once from a name,email CSV
 ```
 
 `set-password` asks for the password at a prompt instead of taking it as an argument, so
 it never lands in your shell history. `add-contact` and `add-group` edit `config.toml` in
-place, leaving your comments and layout untouched. Anything a send would reject — a blocked
+place, leaving your comments and layout untouched. `import-contacts` reads a CSV with
+`name` and `email` columns and adds every row in one pass; a row with a bad address is
+named and nothing is written, so a typo never leaves the book half-filled. Anything a send would reject — a blocked
 attachment, a message over the limit, a missing password — is reported the same way it
 is from Python, before a connection opens. A partial refusal exits non-zero, so a script
 can tell.

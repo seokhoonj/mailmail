@@ -353,11 +353,14 @@ mailmail contacts                      # 쓸 수 있는 계정과 주소록 이�
 mailmail set-password you@naver.com --alias personal  # 설정 작성 + 앱 비밀번호 저장
 mailmail add-contact lead lead@example.com            # 주소록 별칭 추가
 mailmail add-group   team manager lead                # 주소·별칭 묶음(그룹)
+mailmail import-contacts contacts.csv                 # name,email CSV로 여러 개 한 번에 추가
 ```
 
 `set-password`는 비밀번호를 인자로 받지 않고 프롬프트로 묻습니다. 그래서 셸 히스토리에 남지
 않습니다. `add-contact`·`add-group`은 `config.toml`을 제자리 편집해 주석과 서식을 그대로
-둡니다. 차단된 첨부, 한도를 넘는 메일, 없는 비밀번호처럼 발송이 거부할 것은 파이썬에서와
+둡니다. `import-contacts`는 `name`·`email` 컬럼을 가진 CSV를 읽어 모든 행을 한 번에
+추가합니다. 주소가 잘못된 행이 있으면 그 행을 짚어 알리고 아무것도 쓰지 않아서, 오타 하나로
+주소록이 반만 채워지는 일이 없습니다. 차단된 첨부, 한도를 넘는 메일, 없는 비밀번호처럼 발송이 거부할 것은 파이썬에서와
 똑같이 연결을 열기 전에 알려줍니다. 일부만 거부되면 종료 코드가 0이 아니어서 스크립트가
 알아챌 수 있습니다.
 

@@ -33,6 +33,7 @@ from mailmail.config import (
     add_group,
     config_dir,
     default_config_path,
+    import_contacts,
     load_config,
 )
 from mailmail.contacts import AddressBook, resolve_recipients
@@ -112,6 +113,7 @@ __all__ = [
     "config_dir",
     "default_config_path",
     "delete_password",
+    "import_contacts",
     "load_config",
     "resolve_password",
     "resolve_recipients",
