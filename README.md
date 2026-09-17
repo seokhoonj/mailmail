@@ -477,7 +477,7 @@ reaches. Mail cannot be unsent.
 
 The exception message states, in words, what is wrong and how to fix it.
 
-| | Meaning |
+| Exception | Meaning |
 |---|---|
 | `ConfigError` | The config file is missing or malformed. Go to step 2 |
 | `MissingPasswordError` | No password stored yet. Go to step 3 |
