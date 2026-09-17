@@ -204,11 +204,12 @@ class TestStoreFailuresWrapAsCredentialsError:
             delete_password(NAVER_ACCOUNT)
 
     def test_a_malformed_store_binding_is_a_credentials_error(self, monkeypatch):
-        # A bad MAILMAIL_NAMESPACE surfaces at the call as a CredentialsError, not
-        # credbox's foreign InvalidAppNameError. (`_reset_store_cache` isolates the
-        # lazily-built store, so this binding does not leak to another test.)
+        # A bad MAILMAIL_NAMESPACE surfaces as a CredentialsError, not a foreign
+        # InvalidAppNameError -- credbox validates the binding lazily, so the fault
+        # shows when resolve_password reads the store, not when the store is built.
+        # (_reset_store_cache clears the cached store, so the binding does not leak.)
         monkeypatch.setenv("MAILMAIL_NAMESPACE", "../evil")
-        with pytest.raises(CredentialsError, match="store binding is invalid"):
+        with pytest.raises(CredentialsError, match="could not be read"):
             resolve_password(NAVER_ACCOUNT)
 
     def test_import_mailmail_does_not_crash_on_a_malformed_binding(self):

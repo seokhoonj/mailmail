@@ -7,7 +7,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "mailmail"
-version = "0.4.1"
+version = "0.4.2"
 description = "Send mail through Gmail or Naver SMTP, with the provider's own rules checked before anything is sent."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -34,7 +34,7 @@ classifiers = [
 #   tomlite -- the comment-preserving TOML writer the setup commands use to edit config.toml.
 # tomlite floor is 0.1.1: the setup commands rely on it *refusing* an edit it cannot make
 # safely (an old [accounts.<name>] file) rather than 0.1.0's silent corruption of it.
-dependencies = ["credbox>=0.3.0,<0.4", "tomlite>=0.1.1,<0.2"]
+dependencies = ["credbox>=0.4.0,<0.5", "tomlite>=0.1.1,<0.2"]
 
 [project.scripts]
 mailmail = "mailmail.cli:main"

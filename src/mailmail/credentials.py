@@ -56,11 +56,12 @@ PASSWORD_ENV_VAR = "MAILMAIL_PASSWORD"
 def _get_store() -> Credentials:
     """mailmail's credential store, built on first use and cached.
 
-    Built lazily rather than at import: `for_app` validates the `MAILMAIL_STORE_APP` /
-    `MAILMAIL_NAMESPACE` override eagerly, so a malformed one would raise credbox's
-    `InvalidAppNameError` -- a foreign type -- and abort `import mailmail` itself, in
-    the host-embedding scenario `for_app` exists to serve. Deferred here, it comes back
-    as a `CredentialsError` (a `MailmailError`) at the send/store call site, inside the
+    Built lazily rather than at import so nothing about the store -- a malformed
+    `MAILMAIL_STORE_APP` / `MAILMAIL_NAMESPACE` override in the host-embedding scenario
+    `for_app` exists to serve, or any other binding fault -- can crash `import mailmail`
+    itself. Any credbox error building the binding is translated to a `CredentialsError`
+    (a `MailmailError`), so a foreign type never escapes; a fault credbox defers to the
+    first store access surfaces the same way at the send/store call site, inside the
     documented catch surface. credbox resolves the store path per call, so the cached
     binding still isolates a test that repoints `XDG_CONFIG_HOME`.
     """
