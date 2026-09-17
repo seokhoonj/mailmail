@@ -21,11 +21,27 @@ from typing import NamedTuple
 import pytest
 
 # `mailmail.credentials` binds its store via `Credentials.for_app`, which reads
-# MAILMAIL_STORE_APP / MAILMAIL_NAMESPACE at import time. Clear a developer's shell
-# values here (before any test module imports mailmail) so the suite exercises the
-# standalone binding, not an inherited redirect.
+# MAILMAIL_STORE_APP / MAILMAIL_NAMESPACE the first time a credential call builds the
+# store. Clear a developer's shell values here (before any test touches it) so the
+# suite exercises the standalone binding, not an inherited redirect.
 os.environ.pop("MAILMAIL_STORE_APP", None)
 os.environ.pop("MAILMAIL_NAMESPACE", None)
+
+
+@pytest.fixture(autouse=True)
+def _reset_store_cache():
+    """Clear the lazily-built, process-cached credential store around every test.
+
+    `_get_store` caches one `Credentials` binding for the process (`@lru_cache`); a test
+    that redirects the binding with `MAILMAIL_STORE_APP` / `MAILMAIL_NAMESPACE` would
+    otherwise leave it cached past the monkeypatched env that built it, so the next test
+    would inherit the redirect. Clearing before and after keeps such a test local.
+    """
+    from mailmail.credentials import _get_store
+
+    _get_store.cache_clear()
+    yield
+    _get_store.cache_clear()
 
 
 @pytest.fixture
