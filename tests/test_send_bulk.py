@@ -26,7 +26,7 @@ from mailmail import (
 from mailmail.credentials import store_password
 from mailmail.provider import GMAIL, NAVER, MailProvider
 
-ACCOUNT = SmtpAccount(name="naver", username="me@example.com", provider=NAVER)
+ACCOUNT = SmtpAccount(email="me@example.com", alias="naver", provider=NAVER)
 
 ADDRESS_BOOK = {
     "lead":     ("lead@example.com",),
@@ -44,7 +44,7 @@ def _password_on_file(fake_smtp):
 def _make_config(**overrides):
     fields = {
         "default_account": "naver",
-        "account_by_name": {"naver": ACCOUNT},
+        "account_by_handle": {"naver": ACCOUNT},
         "address_book":    ADDRESS_BOOK,
     }
     return Config(**(fields | overrides))
@@ -69,7 +69,7 @@ SMALL_LIMIT_PROVIDER = MailProvider(
     login_requirements = NAVER.login_requirements,
 )
 SMALL_LIMIT_ACCOUNT = SmtpAccount(
-    name="naver", username="me@example.com", provider=SMALL_LIMIT_PROVIDER
+    email="me@example.com", alias="naver", provider=SMALL_LIMIT_PROVIDER
 )
 
 
@@ -217,7 +217,7 @@ class TestFailuresThatOnlyAppearMidBatch:
     def test_a_row_over_size_only_once_assembled_fails_after_prior_rows_sent(
         self, fake_smtp
     ):
-        config = _make_config(account_by_name={"naver": SMALL_LIMIT_ACCOUNT})
+        config = _make_config(account_by_handle={"naver": SMALL_LIMIT_ACCOUNT})
         mails = [
             _make_mail(to="a@example.com", body="small"),
             _make_mail(to="b@example.com", body="x" * 5000),
@@ -252,11 +252,11 @@ class TestTheBatchSendsAsTheChosenAccount:
 
     def test_a_named_account_sends_the_whole_batch(self, fake_smtp):
         gmail_account = SmtpAccount(
-            name="gmail", username="me@gmail.com", provider=GMAIL
+            email="me@gmail.com", alias="gmail", provider=GMAIL
         )
         store_password(gmail_account, "gmail-pw")
         config = _make_config(
-            account_by_name={"naver": ACCOUNT, "gmail": gmail_account}
+            account_by_handle={"naver": ACCOUNT, "gmail": gmail_account}
         )
         send_bulk([_make_mail(to="a@example.com")], account="gmail", config=config)
         assert fake_smtp.connections[0]["host"] == "smtp.gmail.com"
@@ -283,8 +283,8 @@ class TestTheBatchFailsAtLoginBeforeAnythingIsSent:
     stops the whole batch with nothing sent -- what send_bulk documents."""
 
     def test_a_missing_password_stops_the_batch(self, fake_smtp):
-        other = SmtpAccount(name="gmail", username="me@gmail.com", provider=GMAIL)
-        config = _make_config(account_by_name={"naver": ACCOUNT, "gmail": other})
+        other = SmtpAccount(email="me@gmail.com", alias="gmail", provider=GMAIL)
+        config = _make_config(account_by_handle={"naver": ACCOUNT, "gmail": other})
         with pytest.raises(MissingPasswordError):
             send_bulk([_make_mail()], account="gmail", config=config)
         assert fake_smtp.sent_messages == []

@@ -26,7 +26,7 @@ from mailmail import (
 from mailmail.credentials import store_password
 from mailmail.provider import NAVER
 
-ACCOUNT = SmtpAccount(name="naver", username="me@example.com", provider=NAVER)
+ACCOUNT = SmtpAccount(email="me@example.com", alias="naver", provider=NAVER)
 
 
 @pytest.fixture(autouse=True)
@@ -45,7 +45,7 @@ ADDRESS_BOOK = {
 def _make_config(**overrides):
     fields = {
         "default_account": "naver",
-        "account_by_name": {"naver": ACCOUNT},
+        "account_by_handle": {"naver": ACCOUNT},
         "address_book":    ADDRESS_BOOK,
     }
     return Config(**(fields | overrides))

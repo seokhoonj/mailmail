@@ -4,8 +4,21 @@ from pathlib import Path
 
 import pytest
 
-from mailmail.config import config_dir, default_config_path, load_config
-from mailmail.errors import ConfigError, UnknownAccountError, UnknownProviderError
+from mailmail.config import (
+    account_for,
+    add_account,
+    add_contact,
+    add_group,
+    config_dir,
+    default_config_path,
+    load_config,
+)
+from mailmail.errors import (
+    ConfigError,
+    InvalidAddressError,
+    UnknownAccountError,
+    UnknownProviderError,
+)
 
 TWO_ACCOUNT_CONFIG = """
 default_account = "naver"
@@ -35,18 +48,18 @@ def _write_config(tmp_path, text):
 class TestAccounts:
     def test_accounts_are_read_with_their_providers(self, tmp_path):
         config = load_config(_write_config(tmp_path, TWO_ACCOUNT_CONFIG))
-        assert set(config.account_by_name) == {"naver", "gmail"}
-        assert config.account_by_name["naver"].username == "me@naver.com"
-        assert config.account_by_name["naver"].provider.smtp_host == "smtp.naver.com"
-        assert config.account_by_name["gmail"].provider.smtp_host == "smtp.gmail.com"
+        assert set(config.account_by_handle) == {"naver", "gmail"}
+        assert config.account_by_handle["naver"].email == "me@naver.com"
+        assert config.account_by_handle["naver"].provider.smtp_host == "smtp.naver.com"
+        assert config.account_by_handle["gmail"].provider.smtp_host == "smtp.gmail.com"
 
     def test_account_defaults_to_the_named_default(self, tmp_path):
         config = load_config(_write_config(tmp_path, TWO_ACCOUNT_CONFIG))
-        assert config.resolve_account().name == "naver"
+        assert config.resolve_account().handle == "naver"
 
     def test_account_can_be_asked_for_by_name(self, tmp_path):
         config = load_config(_write_config(tmp_path, TWO_ACCOUNT_CONFIG))
-        assert config.resolve_account("gmail").username == "me@gmail.com"
+        assert config.resolve_account("gmail").email == "me@gmail.com"
 
     def test_unknown_account_names_the_configured_ones(self, tmp_path):
         config = load_config(_write_config(tmp_path, TWO_ACCOUNT_CONFIG))
@@ -59,7 +72,7 @@ class TestAccounts:
             tmp_path,
             '[accounts.naver]\nprovider = "naver"\nusername = "me@naver.com"\n',
         )
-        assert load_config(path).resolve_account().name == "naver"
+        assert load_config(path).resolve_account().handle == "naver"
 
     def test_several_accounts_without_a_default_is_refused_rather_than_guessed(
         self, tmp_path
@@ -91,6 +104,166 @@ class TestAccounts:
         path = _write_config(tmp_path, '[accounts.naver]\nprovider = "naver"\n')
         with pytest.raises(ConfigError, match="username"):
             load_config(path)
+
+
+NEW_FORMAT_CONFIG = """
+default_account = "personal"
+
+[[accounts]]
+email = "me@naver.com"
+alias = "personal"
+
+[[accounts]]
+email = "me@gmail.com"
+alias = "work"
+"""
+
+
+class TestNewFormatAccounts:
+    """The current `[[accounts]]` shape: an address, an optional alias, no provider."""
+
+    def test_loads_array_of_tables_with_inferred_providers(self, tmp_path):
+        config = load_config(_write_config(tmp_path, NEW_FORMAT_CONFIG))
+        assert set(config.account_by_handle) == {"personal", "work"}
+        personal = config.account_by_handle["personal"]
+        assert personal.email == "me@naver.com"
+        assert personal.provider.smtp_host == "smtp.naver.com"
+        assert config.account_by_handle["work"].provider.smtp_host == "smtp.gmail.com"
+
+    def test_an_account_without_an_alias_is_keyed_by_its_address(self, tmp_path):
+        config = load_config(
+            _write_config(tmp_path, '[[accounts]]\nemail = "solo@gmail.com"\n')
+        )
+        assert set(config.account_by_handle) == {"solo@gmail.com"}
+        assert config.resolve_account().email == "solo@gmail.com"
+
+    def test_an_unsupported_domain_is_refused(self, tmp_path):
+        with pytest.raises(UnknownProviderError, match="unsupported email domain"):
+            load_config(
+                _write_config(tmp_path, '[[accounts]]\nemail = "me@hanmail.net"\n')
+            )
+
+    def test_an_explicit_provider_overrides_domain_inference(self, tmp_path):
+        # A known provider on an off-list domain -- a Workspace address on a custom
+        # domain. The escape hatch keeps the writer's inferred-by-default form usable.
+        config = load_config(
+            _write_config(
+                tmp_path, '[[accounts]]\nemail = "me@company.com"\nprovider = "gmail"\n'
+            )
+        )
+        assert config.resolve_account().provider.smtp_host == "smtp.gmail.com"
+
+    def test_two_accounts_sharing_a_handle_are_refused(self, tmp_path):
+        toml = (
+            'default_account = "me"\n'
+            '[[accounts]]\nemail = "a@naver.com"\nalias = "me"\n'
+            '[[accounts]]\nemail = "b@gmail.com"\nalias = "me"\n'
+        )
+        with pytest.raises(ConfigError, match="share the handle"):
+            load_config(_write_config(tmp_path, toml))
+
+    def test_handles_that_fold_to_one_password_env_var_are_refused(self, tmp_path):
+        # `me-naver` and `me.naver` are distinct handles but both fold to
+        # MAILMAIL_PASSWORD_ME_NAVER, so an exported password could not say which
+        # account it is for -- the disclosure the per-account name exists to prevent.
+        toml = (
+            'default_account = "me-naver"\n'
+            '[[accounts]]\nemail = "a@naver.com"\nalias = "me-naver"\n'
+            '[[accounts]]\nemail = "b@naver.com"\nalias = "me.naver"\n'
+        )
+        with pytest.raises(ConfigError, match="fold to the password"):
+            load_config(_write_config(tmp_path, toml))
+
+    def test_an_account_missing_an_email_is_refused(self, tmp_path):
+        with pytest.raises(ConfigError, match="email"):
+            load_config(_write_config(tmp_path, '[[accounts]]\nalias = "x"\n'))
+
+    def test_default_account_of_the_wrong_type_is_refused_not_crashed(self, tmp_path):
+        # A list value reaching `x not in dict` would raise TypeError (unhashable),
+        # escaping send()'s documented catch surface; it must be a ConfigError.
+        toml = (
+            'default_account = ["x"]\n'
+            '[[accounts]]\nemail = "me@naver.com"\nalias = "me"\n'
+        )
+        with pytest.raises(ConfigError, match="default_account must be a string"):
+            load_config(_write_config(tmp_path, toml))
+
+
+class TestWriting:
+    """The setup commands' engine: build, then persist, an account or address-book
+    entry, without disturbing the rest of the file."""
+
+    def test_account_for_infers_the_provider(self):
+        account = account_for("me@naver.com", alias="personal")
+        assert (account.email, account.alias, account.handle) == (
+            "me@naver.com",
+            "personal",
+            "personal",
+        )
+        assert account.provider.smtp_host == "smtp.naver.com"
+
+    def test_account_for_rejects_a_malformed_address(self):
+        with pytest.raises(InvalidAddressError):
+            account_for("not-an-email")
+
+    def test_account_for_rejects_an_address_shaped_alias(self):
+        with pytest.raises(InvalidAddressError, match="plain handle"):
+            account_for("me@naver.com", alias="me@elsewhere")
+
+    def test_add_contact_rejects_a_toml_hostile_address(self, tmp_path):
+        # A bracket in an address never belongs there and would be a hostile value; it
+        # is refused at entry, so nothing is written to feed the config writer.
+        with pytest.raises(InvalidAddressError):
+            add_contact("foo", "a[b@x.com", path=tmp_path / "config.toml")
+
+    def test_add_account_round_trips_and_seeds_the_default(self, tmp_path):
+        path = tmp_path / "config.toml"
+        add_account(account_for("me@naver.com", alias="personal"), path=path)
+        config = load_config(path)
+        assert config.resolve_account("personal").email == "me@naver.com"
+        assert config.default_account == "personal"  # the first account is the default
+
+    def test_add_contact_and_group_round_trip(self, tmp_path):
+        path = tmp_path / "config.toml"
+        add_account(account_for("me@naver.com", alias="personal"), path=path)
+        add_contact("lead", "lead@example.com", path=path)
+        add_group("team", ["lead", "boss@example.com"], path=path)
+        book = load_config(path).address_book
+        assert book["lead"] == ("lead@example.com",)
+        assert book["team"] == ("lead", "boss@example.com")
+
+    def test_add_contact_rejects_a_name_that_looks_like_an_address(self, tmp_path):
+        with pytest.raises(InvalidAddressError, match="plain alias"):
+            add_contact("me@x.com", "lead@example.com", path=tmp_path / "config.toml")
+
+    def test_add_account_refuses_the_old_account_table_layout(self, tmp_path):
+        # A config written before the `[[accounts]]` switch: the writer cannot append an
+        # array-of-tables named `accounts` beside a table of the same name. It must
+        # refuse with advice -- a ConfigError, inside the catch surface -- and leave the
+        # file exactly as it was, not half-edit or corrupt it.
+        path = _write_config(tmp_path, TWO_ACCOUNT_CONFIG)
+        before = path.read_text(encoding="utf-8")
+        with pytest.raises(ConfigError, match=r"old \[accounts.<name>\] layout"):
+            add_account(account_for("new@gmail.com", alias="work"), path=path)
+        assert path.read_text(encoding="utf-8") == before
+
+    def test_add_contact_wraps_an_edit_collision_as_config_error(self, tmp_path):
+        # `contacts` already exists as a top-level key, so opening a `[contacts]` table
+        # to add an alias is a name collision tomlite refuses -- as a ConfigError here,
+        # not tomlite's own exception type escaping the catch surface.
+        path = _write_config(
+            tmp_path,
+            'contacts = "oops"\n[[accounts]]\nemail = "me@naver.com"\nalias = "me"\n',
+        )
+        with pytest.raises(ConfigError, match="cannot update the configuration"):
+            add_contact("lead", "lead@example.com", path=path)
+
+    def test_add_contact_wraps_an_unsupported_file_as_config_error(self, tmp_path):
+        # An existing file tomlite will not edit safely (a dotted key): it loads, but
+        # the first edit is refused. That refusal must surface as a ConfigError too.
+        path = _write_config(tmp_path, "a.b = 1\n")
+        with pytest.raises(ConfigError, match="cannot update the configuration"):
+            add_contact("lead", "lead@example.com", path=path)
 
 
 class TestAddressBook:
@@ -162,7 +335,7 @@ class TestFileItself:
             load_config(tmp_path / "absent.toml")
         message = str(caught.value)
         assert "absent.toml" in message
-        assert "accounts" in message
+        assert "set-password" in message  # how to create it
 
     def test_malformed_toml_is_reported_as_such(self, tmp_path):
         with pytest.raises(ConfigError, match="not valid TOML"):

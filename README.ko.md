@@ -41,8 +41,9 @@ send(
 
 Claude Code를 쓴다면 파이썬을 몰라도 말로 보낼 수 있습니다 → [AI 코딩 에이전트에서 사용](#8-ai-코딩-에이전트에서-사용)
 
-Windows·macOS·Linux에서 동작합니다. 설치되는 것은 이 패키지뿐이고, 다른 라이브러리를 함께
-끌어오지 않습니다.
+Windows·macOS·Linux에서 동작합니다. 설치 시 credbox(자격증명 저장)와 tomlite(설정 편집),
+두 개의 작은 first-party 라이브러리를 함께 끌어오고 그 밖의 것은 없습니다. 둘 다 자체로
+무의존성입니다.
 
 ## 구조 한눈에
 
@@ -95,27 +96,33 @@ python -c "import mailmail; print(mailmail.__version__)"
 | macOS · Linux | `~/.config/mailmail/config.toml` |
 | Windows | `C:\Users\<사용자이름>\.config\mailmail\config.toml` |
 
-폴더가 없으면 만듭니다. 파일 내용은 자기 주소로 바꿔서:
+직접 안 써도 됩니다: `mailmail set-password you@naver.com --alias personal`(3단계)이
+파일을 만들고 계정을 추가해 주고, `mailmail add-contact` / `add-group`이 주소록을 채웁니다.
+직접 쓰고 싶다면 이렇게 생겼습니다:
 
 ```toml
-default_account = "naver"
+default_account = "personal"
 
-[accounts.naver]
-provider = "naver"
-username = "you@naver.com"
+[[accounts]]
+email = "you@naver.com"
+alias = "personal"
 
-[accounts.gmail]
-provider = "gmail"
-username = "you@gmail.com"
+[[accounts]]
+email = "you@gmail.com"
+alias = "work"
 
 [contacts]
-me   = "you@naver.com"
-lead = "lead@example.com"
-team = ["me", "lead"]
+manager = "manager@example.com"
+lead    = "lead@example.com"
+friend  = "friend@example.com"
+team    = ["manager", "lead"]
 ```
 
-- `default_account` — 계정을 안 고르면 어느 걸로 보낼지.
-- `[accounts.*]` — 쓸 계정들. 하나만 있어도 됩니다. `provider`는 `naver` 또는 `gmail`.
+- `default_account` — 계정을 안 고르면 어느 걸로 보낼지. 핸들(계정의 `alias`, 없으면
+  `email`)을 가리킵니다.
+- `[[accounts]]` — 쓸 계정들, 하나에 한 테이블. 하나만 있어도 됩니다. `email`은 필수,
+  `alias`는 사서함을 가리키는 선택 핸들(`personal`, `work`)입니다. provider는 도메인
+  (`@naver.com`, `@gmail.com`)에서 추론하므로 여기 적지 않습니다.
 - `[contacts]` — 주소록. 안 써도 됩니다. 여러 명을 묶으면(`team`) 한 번에 보낼 수 있고,
   묶음 안에 다른 이름을 넣어도 됩니다.
 
@@ -161,8 +168,8 @@ python -c "
 from getpass import getpass
 from mailmail import load_config, store_password
 
-account = load_config().resolve_account('naver')                  # Gmail이면 'gmail'
-password = getpass(f'{account.username} app password: ').strip()
+account = load_config().resolve_account('personal')               # Gmail이면 'work'
+password = getpass(f'{account.email} app password: ').strip()
 print(f'  length: {len(password)}')                               # NAVER 12자리, Gmail 16자리
 store_password(account, password)
 print('  saved')
@@ -186,12 +193,12 @@ python -c "
 import smtplib
 from mailmail import load_config, resolve_password
 
-for name in ('naver',):  # Gmail도 저장했으면 ('naver', 'gmail')
+for name in ('personal',):  # Gmail도 저장했으면 ('personal', 'work')
     account = load_config().resolve_account(name)
     smtp = smtplib.SMTP(account.provider.smtp_host, account.provider.smtp_port, timeout=20)
     smtp.ehlo(); smtp.starttls(); smtp.ehlo()
     try:
-        smtp.login(account.username, resolve_password(account))
+        smtp.login(account.email, resolve_password(account))
         print(f'  {name}: OK')
     except smtplib.SMTPAuthenticationError as e:
         print(f'  {name}: {e.smtp_code} {e.smtp_error.decode()[:60]}')
@@ -245,7 +252,7 @@ send(to="lead", subject="주간 보고", body=body, attachments=["report.xlsx"])
 
 ```python
 receipt = send(
-    account     = "gmail",  # 안 적으면 default_account
+    account     = "work",  # 안 적으면 default_account
     to          = "lead",
     cc          = "team",
     bcc         = "audit@example.com",
@@ -319,7 +326,7 @@ mailmail send --to lead --subject "주간 보고" --body "검토 부탁드립니
 
 ```sh
 mailmail send --to team --subject "월말 결산" \
-    --body-file note.txt --attach close.xlsx --attach notes.pdf --account gmail
+    --body-file note.txt --attach close.xlsx --attach notes.pdf --account work
 
 mailmail send --to lead --subject "주간 보고" < note.txt
 ```
@@ -329,7 +336,7 @@ CSV로 여러 통 한 번에 — 한 행이 한 통, 배치 전체가 로그인 
 들어가는 칸(수신자, 첨부)은 세미콜론으로 나눕니다.
 
 ```sh
-mailmail send-bulk batch.csv --account gmail
+mailmail send-bulk batch.csv --account work
 ```
 
 ```csv
@@ -338,16 +345,19 @@ cheolsu@example.com,6월 실적,"철수님, 첨부 확인 부탁드립니다.",c
 team,6월 요약,"수치 전부 첨부했습니다.",june.xlsx;notes.pdf
 ```
 
-나머지 세 명령은 설정하고 확인하는 용도입니다.
+나머지 명령들은 설정하고 확인하는 용도입니다.
 
 ```sh
 mailmail setup                         # 설정·자격증명 파일 경로와 템플릿
 mailmail contacts                      # 쓸 수 있는 계정과 주소록 이름
-mailmail set-password --account naver  # 앱 비밀번호 저장(프롬프트로)
+mailmail set-password you@naver.com --alias personal  # 설정 작성 + 앱 비밀번호 저장
+mailmail add-contact lead lead@example.com            # 주소록 별칭 추가
+mailmail add-group   team manager lead                # 주소·별칭 묶음(그룹)
 ```
 
 `set-password`는 비밀번호를 인자로 받지 않고 프롬프트로 묻습니다. 그래서 셸 히스토리에 남지
-않습니다. 차단된 첨부, 한도를 넘는 메일, 없는 비밀번호처럼 발송이 거부할 것은 파이썬에서와
+않습니다. `add-contact`·`add-group`은 `config.toml`을 제자리 편집해 주석과 서식을 그대로
+둡니다. 차단된 첨부, 한도를 넘는 메일, 없는 비밀번호처럼 발송이 거부할 것은 파이썬에서와
 똑같이 연결을 열기 전에 알려줍니다. 일부만 거부되면 종료 코드가 0이 아니어서 스크립트가
 알아챌 수 있습니다.
 

@@ -1,12 +1,11 @@
-"""The machine-local config directory, and reading the accounts and the
-address book off disk.
+"""The machine-local config directory, and reading and writing the accounts and
+the address book on disk.
 
-`config_dir()` resolves the one directory mailmail keeps on the machine, by hand
-from the env var the XDG spec names -- no `platformdirs` dependency, matching the
-zero-dependency rule. Both files hang off it: `config.toml` here, and the `0600`
-`credentials.json` read by `credentials` (which imports `config_dir` from here, so
-the base is resolved in exactly one place). There is no data or state directory --
-mailmail sends and forgets, writing nothing durable to relocate.
+`config_dir()` resolves the directory `config.toml` lives in through credbox's own
+`config_dir`, the same resolver credbox uses for the `0600` `credentials.json` beside
+it -- so the two files share one directory by construction, on every platform and
+under every override, rather than by two resolvers agreeing. There is no data or
+state directory -- mailmail sends and forgets, writing nothing durable to relocate.
 
 The directory lives outside any checkout because a mail setup is a property of the
 machine, not of a project -- and because a project directory is exactly the kind of
@@ -17,20 +16,30 @@ accounts and the address book.
 
 import os
 import tomllib
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any
 
+from credbox import CredBoxError, colliding_env_var_prefixes
+from credbox import config_dir as credbox_config_dir
+from tomlite import TOMLEditor, TomliteError, TOMLValue
+
 from mailmail.account import SmtpAccount
 from mailmail.contacts import AddressBook
-from mailmail.errors import ConfigError, UnknownAccountError
-from mailmail.provider import resolve_provider
+from mailmail.credentials import PASSWORD_ENV_VAR
+from mailmail.errors import ConfigError, InvalidAddressError, UnknownAccountError
+from mailmail.provider import MailProvider, provider_for_email, resolve_provider
 
 __all__ = [
     "STARTER_CONFIG",
     "Config",
+    "account_for",
+    "add_account",
+    "add_contact",
+    "add_group",
     "config_dir",
     "default_config_path",
     "load_config",
@@ -40,23 +49,25 @@ CONFIG_PATH_ENV_VAR = "MAILMAIL_CONFIG"
 
 # A ready-to-edit configuration, printed by `mailmail setup` and shown in the
 # README. It lives here, beside the parser that reads this exact shape, so the
-# schema has one home: a provider renamed in `provider.py` or a key changed in
-# `_as_config` is a change a reader makes here too, not in a copy that drifts.
+# schema has one home: a key changed in `_as_config` is a change a reader makes
+# here too, not in a copy that drifts. `set-password`, `add-contact`, and
+# `add-group` write this same shape, so most users never edit it by hand.
 STARTER_CONFIG = """\
-default_account = "naver"
+default_account = "personal"
 
-[accounts.naver]
-provider = "naver"
-username = "you@naver.com"
+[[accounts]]
+email = "you@naver.com"
+alias = "personal"
 
-[accounts.gmail]
-provider = "gmail"
-username = "you@gmail.com"
+[[accounts]]
+email = "you@gmail.com"
+alias = "work"
 
 [contacts]
-me   = "you@naver.com"
-lead = "lead@example.com"
-team = ["me", "lead"]
+manager = "manager@example.com"
+lead    = "lead@example.com"
+friend  = "friend@example.com"
+team    = ["manager", "lead"]
 """
 
 
@@ -67,9 +78,10 @@ class Config:
     Attributes
     ----------
     default_account
-        Name of the account `send` uses when the caller names none.
-    account_by_name
-        Every configured mailbox.
+        Handle of the account `send` uses when the caller names none.
+    account_by_handle
+        Every configured mailbox, keyed by its handle (alias, or address when it
+        has no alias).
     address_book
         Alias table, possibly empty.
 
@@ -80,29 +92,29 @@ class Config:
     """
 
     default_account: str
-    account_by_name: Mapping[str, SmtpAccount]
+    account_by_handle: Mapping[str, SmtpAccount]
     address_book: AddressBook
 
     def __post_init__(self) -> None:
         object.__setattr__(
-            self, "account_by_name", MappingProxyType(dict(self.account_by_name))
+            self, "account_by_handle", MappingProxyType(dict(self.account_by_handle))
         )
         object.__setattr__(
             self, "address_book", MappingProxyType(dict(self.address_book))
         )
 
-    def resolve_account(self, name: str | None = None) -> SmtpAccount:
-        """Look up an account by name, or the default when `name` is None.
+    def resolve_account(self, handle: str | None = None) -> SmtpAccount:
+        """Look up an account by handle, or the default when `handle` is None.
 
         Raises
         ------
         UnknownAccountError
         """
-        wanted = self.default_account if name is None else name
+        wanted = self.default_account if handle is None else handle
         try:
-            return self.account_by_name[wanted]
+            return self.account_by_handle[wanted]
         except KeyError as err:
-            known = ", ".join(sorted(self.account_by_name))
+            known = ", ".join(sorted(self.account_by_handle))
             raise UnknownAccountError(
                 f"no account named {wanted!r} in the configuration; it has: {known}"
             ) from err
@@ -110,46 +122,32 @@ class Config:
 
 def config_dir() -> Path:
     """mailmail's directory on the machine: `config.toml` and the `0600`
-    `credentials.json`.
+    `credentials.json` beside it.
 
-    `$XDG_CONFIG_HOME/mailmail` when that variable holds an absolute path, else
-    `~/.config/mailmail` -- the same on every OS (the git / ssh / aws convention),
-    not a platform-native dir. A blank, whitespace-only, or *relative*
-    `XDG_CONFIG_HOME` is ignored, per the XDG spec ("a relative path ... must be
-    ignored"): a relative value resolves against the working directory, so a cron
-    run (cwd `/`) and an interactive run (cwd `~`) would otherwise find the config
-    in different places. A leading `~` is expanded first, so `~/config` is honored
-    once it resolves to an absolute path; a value still relative after expansion --
-    including a `~user` that names no such user -- is ignored, not an error. It has
-    no override key of its own -- config cannot name the directory the config file
-    itself lives in; the config file's own location has a per-file override
-    (`MAILMAIL_CONFIG`).
+    Delegated to credbox's `config_dir`, so the config this module writes and the
+    credential store credbox writes always resolve to the *same* directory -- on
+    every platform and under every override -- instead of two hand-rolled resolvers
+    that could drift apart. It is `$XDG_CONFIG_HOME/mailmail` when that holds an
+    absolute path, else `~/.config/mailmail` (the git / ssh / aws convention); a
+    relative, blank, or unresolvable `XDG_CONFIG_HOME` is ignored per the XDG spec.
+    `MAILMAIL_CONFIG_DIR` is an absolute-path override credbox honors for both files
+    at once; the config *file* keeps its own per-file override, `MAILMAIL_CONFIG`
+    (see `default_config_path`).
 
     Raises
     ------
     ConfigError
         No home directory can be found for the `~/.config` fallback (HOME is unset
         and the user has no passwd entry -- a container run as an arbitrary uid).
-        Raised as a `MailmailError` rather than the bare `RuntimeError` that
-        `Path.home` throws, so it stays inside the catch surface `send` documents.
+        The store's own error is translated to `ConfigError` so it stays inside the
+        `MailmailError` catch surface `send` documents.
     """
-    base = os.environ.get("XDG_CONFIG_HOME", "").strip()
-    if base:
-        try:
-            root = Path(base).expanduser()
-        except RuntimeError:
-            root = Path(base)  # unresolvable `~user`: stays relative, so it falls back
-        if root.is_absolute():
-            return root / "mailmail"
     try:
-        home = Path.home()
-    except RuntimeError as err:
+        return credbox_config_dir("mailmail")
+    except CredBoxError as err:
         raise ConfigError(
-            "cannot locate ~/.config/mailmail: no home directory (HOME is unset and "
-            "the user has no passwd entry); set XDG_CONFIG_HOME or MAILMAIL_CONFIG to "
-            "an absolute path"
+            f"cannot locate the mailmail config directory: {err}"
         ) from err
-    return home / ".config" / "mailmail"
 
 
 def default_config_path() -> Path:
@@ -183,17 +181,13 @@ def load_config(path: Path | str | None = None) -> Config:
     UnknownProviderError
         An account names a provider mailmail does not know.
     """
-    path = (
-        _expand_named_path(path, source="the config path")
-        if path is not None
-        else default_config_path()
-    )
+    path = _resolve_path(path)
     try:
         document = tomllib.loads(path.read_text(encoding="utf-8"))
     except FileNotFoundError as err:
         raise ConfigError(
-            f"no configuration at {path}; create it with an [accounts.<name>] "
-            f"table naming a provider and a username"
+            f"no configuration at {path}; set up an account with "
+            f"`mailmail set-password <you@naver.com>`"
         ) from err
     except OSError as err:
         raise ConfigError(f"cannot read configuration at {path}: {err}") from err
@@ -204,6 +198,216 @@ def load_config(path: Path | str | None = None) -> Config:
     except tomllib.TOMLDecodeError as err:
         raise ConfigError(f"{path} is not valid TOML: {err}") from err
     return _as_config(document, path=path)
+
+
+def account_for(email: str, *, alias: str | None = None) -> SmtpAccount:
+    """Build the account `email` (with optional `alias`) names, inferring its provider
+    from the domain -- without touching any file. Used to validate and resolve a mailbox
+    before prompting for a password, so a typo or an unsupported domain fails first.
+    `alias` is keyword-only so it cannot be swapped with the address.
+
+    Raises
+    ------
+    InvalidAddressError
+        `email` is not a well-formed address, or `alias` is address-shaped or blank.
+    UnknownProviderError
+        The address's domain is not one mailmail sends through.
+    """
+    _validate_email(email)
+    _validate_alias(alias)
+    return SmtpAccount(email=email, alias=alias, provider=provider_for_email(email))
+
+
+def add_account(account: SmtpAccount, *, path: Path | str | None = None) -> None:
+    """Write `account` into the configuration, creating the file if needed and leaving
+    every other entry -- comments included -- as it was. A new address is appended as an
+    `[[accounts]]` block (above `[contacts]` when present); an address already present
+    only has its alias updated. The first account written becomes `default_account`.
+
+    Raises
+    ------
+    ConfigError
+        The configuration path cannot be resolved (see `config_dir`), or the file could
+        not be written.
+    """
+    target = _resolve_path(path)
+    document = _load_document(target)
+    with _editing(target):
+        _refuse_legacy_accounts(document, path=target)
+        if not document.has_in_array(
+            "accounts", match_field="email", match_value=account.email
+        ):
+            fields: list[tuple[str, TOMLValue]] = [("email", account.email)]
+            if account.alias is not None:
+                fields.append(("alias", account.alias))
+            document.append_to_array("accounts", fields, before_table="contacts")
+        elif account.alias is not None:
+            document.update_in_array(
+                "accounts", match_field="email", match_value=account.email,
+                field="alias", value=account.alias,
+            )
+        document.set_root_key("default_account", account.handle, only_if_absent=True)
+    _write(document, target)
+
+
+def add_contact(name: str, address: str, *, path: Path | str | None = None) -> None:
+    """Add or update address-book entry `name`, pointing at a single `address`. Comments
+    and other entries are left untouched.
+
+    Raises
+    ------
+    InvalidAddressError
+        `address` is not a well-formed email, or `name` looks like an address (an `@`
+        would make it read as a recipient rather than an alias).
+    ConfigError
+        The configuration path cannot be resolved, or the file could not be written.
+    """
+    _validate_contact_name(name)
+    _validate_email(address)
+    target = _resolve_path(path)
+    document = _load_document(target)
+    with _editing(target):
+        document.set_table_key("contacts", name, address)
+    _write(document, target)
+
+
+def add_group(
+    name: str, members: Sequence[str], *, path: Path | str | None = None
+) -> None:
+    """Add or update address-book group `name`, standing for `members`. A member with an
+    `@` is a literal address and is validated as one now; a bare member is an alias,
+    resolved at send time (so it need not exist yet). Comments and other entries are
+    left untouched.
+
+    Raises
+    ------
+    InvalidAddressError
+        `name` looks like an address, or a member that carries an `@` is not a
+        well-formed email.
+    ConfigError
+        `members` is empty, the path cannot be resolved, or the file could not be
+        written.
+    """
+    _validate_contact_name(name)
+    if not members:
+        raise ConfigError(f"group {name!r} needs at least one member")
+    for member in members:
+        if "@" in member:
+            _validate_email(member)
+    target = _resolve_path(path)
+    document = _load_document(target)
+    with _editing(target):
+        document.set_table_key("contacts", name, tuple(members))
+    _write(document, target)
+
+
+def _load_document(target: Path) -> TOMLEditor:
+    """Read the config for editing, turning a read failure into a ConfigError (a missing
+    file is not one -- it yields an empty document to write into). tomlite defers its
+    refusal of a file it cannot edit safely to the first edit, not the load, so that is
+    caught by `_editing`, not here."""
+    try:
+        return TOMLEditor.load(target)
+    except OSError as err:
+        raise ConfigError(f"cannot read configuration at {target}: {err}") from err
+
+
+@contextmanager
+def _editing(target: Path) -> Iterator[None]:
+    """Translate a tomlite refusal into a ConfigError while a setup command edits.
+
+    tomlite refuses rather than corrupts, and defers that refusal to the first edit: an
+    existing file it cannot edit safely (a multi-line string, a dotted key) and an edit
+    that would make the file invalid TOML both fail at the call with a `TomliteError`,
+    which would otherwise escape the `MailmailError` surface the CLI and `send` catch.
+    Wrap the edit so a setup command reports one clean line instead of a foreign type.
+    """
+    try:
+        yield
+    except TomliteError as err:
+        raise ConfigError(
+            f"cannot update the configuration at {target}: {err}"
+        ) from err
+
+
+def _write(document: TOMLEditor, target: Path) -> None:
+    """Persist edits, turning a disk failure into a ConfigError so the write path's
+    contract matches the read path's, which wraps its OSError the same way."""
+    try:
+        document.save(target)
+    except OSError as err:
+        raise ConfigError(f"cannot write configuration at {target}: {err}") from err
+
+
+def _refuse_legacy_accounts(document: TOMLEditor, *, path: Path) -> None:
+    """Refuse to edit accounts in a config still written in the old `[accounts.<name>]`
+    table layout, with advice, before tomlite refuses it with a message about arrays and
+    tables that means nothing to someone editing a mail config.
+
+    `load_config` still *reads* that layout, so a config written before the switch keeps
+    sending; but the setup commands only write the `[[accounts]]` array form, and an
+    array-of-tables cannot share the name `accounts` with a table -- TOML has no such
+    shape, so appending one would be refused anyway. Detected from the parsed document
+    (tomlite exposes lines, not the table/array shape) so the message can name the fix.
+    """
+    try:
+        current = tomllib.loads(document.dumps())
+    except tomllib.TOMLDecodeError:
+        return  # a file even tomllib rejects: let the edit's own refusal report it
+    if isinstance(current.get("accounts"), dict):
+        raise ConfigError(
+            f"{path} uses the old [accounts.<name>] layout, which the setup "
+            f"commands no longer edit -- they write [[accounts]] blocks, and TOML "
+            f"cannot hold both under the name 'accounts'. Rewrite the accounts as "
+            f"[[accounts]] entries (`mailmail setup` prints the shape) or start a "
+            f"fresh config; sending still reads the old layout in the meantime."
+        )
+
+
+def _validate_email(value: str) -> None:
+    """Raise unless `value` is a plausibly well-formed address: one `@`, a non-empty
+    local part and domain, a dot in the domain, and no whitespace, control character,
+    or TOML-structural character (`[ ] " \\`). A deliberately light check -- enough to
+    catch a typo at entry, not a full RFC parser (the send path is where an address
+    must truly parse)."""
+    local, at, domain = value.partition("@")
+    unsafe = any(ch <= " " or ch == "\x7f" or ch in '[]"\\' for ch in value)
+    if (
+        not at or not local or not domain
+        or "@" in domain or "." not in domain or unsafe
+    ):
+        raise InvalidAddressError(f"{value!r} is not a valid email address")
+
+
+def _validate_alias(alias: str | None) -> None:
+    """Raise unless `alias` is usable as a handle -- the credential-store key and
+    `default_account`. When given it must be non-empty and free of `@` (an
+    address-shaped handle is confusing) and line breaks (it would break the store key).
+    `None` is fine: the account then goes by its address."""
+    if alias is not None and (
+        not alias or "@" in alias or "\r" in alias or "\n" in alias
+    ):
+        raise InvalidAddressError(
+            f"alias {alias!r} must be a plain handle, not an address (no '@') or blank"
+        )
+
+
+def _validate_contact_name(name: str) -> None:
+    """Raise unless `name` is usable as an address-book alias: non-empty, no `@` (that
+    is how an address is told from an alias), no line break."""
+    if not name or "@" in name or "\r" in name or "\n" in name:
+        raise InvalidAddressError(
+            f"contact name {name!r} must be a plain alias, not an address (no '@')"
+        )
+
+
+def _resolve_path(path: Path | str | None) -> Path:
+    """The config path to read or write: the one given (with `~` expanded), else the
+    default location. Shared by `load_config` and the write commands so both agree on
+    where the configuration lives."""
+    if path is None:
+        return default_config_path()
+    return _expand_named_path(path, source="the config path")
 
 
 def _expand_named_path(value: str | Path, *, source: str) -> Path:
@@ -223,23 +427,48 @@ def _expand_named_path(value: str | Path, *, source: str) -> Path:
 
 
 def _as_config(document: dict[str, Any], *, path: Path) -> Config:
-    accounts = document.get("accounts")
-    if not isinstance(accounts, dict) or not accounts:
-        raise ConfigError(f"{path} defines no accounts; add an [accounts.<name>] table")
-    account_by_name = {
-        name: _as_account(name, table, path=path) for name, table in accounts.items()
-    }
+    accounts = _as_accounts(document.get("accounts"), path=path)
+    account_by_handle: dict[str, SmtpAccount] = {}
+    for account in accounts:
+        if account.handle in account_by_handle:
+            raise ConfigError(
+                f"{path}: two accounts share the handle {account.handle!r}; "
+                f"give one a distinct alias"
+            )
+        account_by_handle[account.handle] = account
+    colliding = colliding_env_var_prefixes(account_by_handle)
+    if colliding:
+        # Handles that differ only in punctuation fold to one password env var
+        # (`me-naver` and `me.naver` both -> MAILMAIL_PASSWORD_ME_NAVER), so an
+        # exported password could not say which account it is for -- the very
+        # disclosure the per-account name exists to prevent. Refuse the config, as
+        # the shared-handle check just above does, rather than resolve it silently.
+        prefix, names = min(colliding.items())
+        raise ConfigError(
+            f"{path}: accounts {' and '.join(map(repr, names))} both fold to the "
+            f"password environment variable {PASSWORD_ENV_VAR}_{prefix}, so an "
+            f"exported password could not tell them apart; give them handles that "
+            f"differ by a letter or digit, not just '.', '-', or '_'"
+        )
     default_account = document.get("default_account")
+    if default_account is not None and not isinstance(default_account, str):
+        # A raw read: `default_account = ["x"]` or `= {a=1}` would otherwise reach the
+        # `not in account_by_handle` test below and raise TypeError (unhashable),
+        # escaping send()'s documented catch surface.
+        raise ConfigError(
+            f"{path}: default_account must be a string, not "
+            f"{type(default_account).__name__}"
+        )
     if default_account is None:
-        if len(account_by_name) > 1:
-            known = ", ".join(sorted(account_by_name))
+        if len(account_by_handle) > 1:
+            known = ", ".join(sorted(account_by_handle))
             raise ConfigError(
                 f"{path} has several accounts ({known}) but no default_account; "
                 f"name the one send should use by default"
             )
-        default_account = next(iter(account_by_name))
-    if default_account not in account_by_name:
-        known = ", ".join(sorted(account_by_name))
+        default_account = next(iter(account_by_handle))
+    if default_account not in account_by_handle:
+        known = ", ".join(sorted(account_by_handle))
         raise ConfigError(
             f"{path} sets default_account = {default_account!r}, which is not a "
             f"configured account; it has: {known}"
@@ -253,38 +482,78 @@ def _as_config(document: dict[str, Any], *, path: Path) -> Config:
             f"(`send(to=..., cc=...)`) and delete the table."
         )
     return Config(
-        default_account = default_account,
-        account_by_name = account_by_name,
-        address_book    = _as_address_book(document.get("contacts", {}), path=path),
+        default_account   = default_account,
+        account_by_handle = account_by_handle,
+        address_book      = _as_address_book(document.get("contacts", {}), path=path),
     )
 
 
-def _as_account(name: str, table: object, *, path: Path) -> SmtpAccount:
+def _as_accounts(raw: object, *, path: Path) -> list[SmtpAccount]:
+    """The configured mailboxes, from either the current `[[accounts]]` array or the
+    legacy `[accounts.<name>]` tables. Reading both lets a config written before this
+    layout keep working untouched; the writer only ever emits the array form."""
+    if isinstance(raw, list) and raw:
+        return [_as_account_table(item, path=path) for item in raw]
+    if isinstance(raw, dict) and raw:
+        return [
+            _as_legacy_account(name, table, path=path) for name, table in raw.items()
+        ]
+    raise ConfigError(
+        f"{path} defines no accounts; set one up with "
+        f"`mailmail set-password <you@naver.com>`"
+    )
+
+
+def _as_account_table(item: object, *, path: Path) -> SmtpAccount:
+    """One `[[accounts]]` entry: a required string `email`, an optional `alias`, and an
+    optional `provider` that overrides domain inference (for a known provider on an
+    off-list domain)."""
+    if not isinstance(item, dict):
+        raise ConfigError(f"{path}: each [[accounts]] entry must be a table")
+    email = _account_string(item, "email", path=path, label="[[accounts]]")
+    alias = item.get("alias")
+    if alias is not None and not isinstance(alias, str):
+        raise ConfigError(
+            f"{path}: [[accounts]].alias must be a string, not "
+            f"{type(alias).__name__}"
+        )
+    return SmtpAccount(email=email, alias=alias, provider=_provider_of(item, email))
+
+
+def _as_legacy_account(name: str, table: object, *, path: Path) -> SmtpAccount:
+    """One legacy `[accounts.<name>]` table: the table key becomes the alias, its
+    `username` the address, and an explicit `provider` is honored (else inferred)."""
     if not isinstance(table, dict):
         raise ConfigError(f"{path}: [accounts.{name}] must be a table")
-    for key in ("provider", "username"):
-        if key not in table:
-            raise ConfigError(f"{path}: [accounts.{name}] is missing {key!r}")
-        # Checking the type, not just the presence: `username = 12345` parses
-        # fine and then detonates inside the email headers, long after the config
-        # file is out of view -- in a package whose whole thesis is that a bad
-        # message dies at the call site.
-        if not isinstance(table[key], str):
-            raise ConfigError(
-                f"{path}: [accounts.{name}].{key} must be a string, not "
-                f"{type(table[key]).__name__}"
-            )
-    if "\r" in table["username"] or "\n" in table["username"]:
-        # username becomes the From header; a line break would break it, or let a
-        # header be injected. Refuse it here, not later inside the email machinery.
+    email = _account_string(table, "username", path=path, label=f"[accounts.{name}]")
+    return SmtpAccount(email=email, alias=name, provider=_provider_of(table, email))
+
+
+def _account_string(
+    table: dict[str, Any], key: str, *, path: Path, label: str
+) -> str:
+    """A required string field of an account table, checked for type and line breaks --
+    the address becomes the `From` header, where a wrong type detonates far from the
+    config and a line break would let a header be injected."""
+    if key not in table:
+        raise ConfigError(f"{path}: {label} is missing {key!r}")
+    value = table[key]
+    if not isinstance(value, str):
         raise ConfigError(
-            f"{path}: [accounts.{name}].username has a line break"
+            f"{path}: {label}.{key} must be a string, not {type(value).__name__}"
         )
-    return SmtpAccount(
-        name     = name,
-        username = table["username"],
-        provider = resolve_provider(table["provider"]),
-    )
+    if "\r" in value or "\n" in value:
+        raise ConfigError(f"{path}: {label}.{key} has a line break")
+    return value
+
+
+def _provider_of(table: dict[str, Any], email: str) -> MailProvider:
+    """The account's provider: the explicit `provider` key when present (a known
+    provider on an off-list domain), else inferred from the address's domain."""
+    named = table.get("provider")
+    if isinstance(named, str):
+        return resolve_provider(named)
+    return provider_for_email(email)
 
 
 def _as_address_book(table: object, *, path: Path) -> AddressBook:

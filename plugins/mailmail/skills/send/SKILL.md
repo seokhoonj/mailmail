@@ -142,8 +142,7 @@ only the **action to add** per exception.
 
 | Exception | Action to add |
 |---|---|
-| `MissingPasswordError` | **Do not have the user paste the password into the chat.** Point them to `mailmail set-password --account <name>`, which prompts in their own terminal. Once stored, it is not asked again. |
-| `InsecureCredentialsError` | None — the exception carries the `chmod 600` command itself. |
+| `MissingPasswordError` | **Do not have the user paste the password into the chat.** Point them to `mailmail set-password <email> --alias <name>`, which prompts in their own terminal. Once stored, it is not asked again. |
 | `BlockedAttachmentError` | Suggest sharing it as a link. |
 | `EncryptedArchiveError` | Ask whether to remove the archive password or send a link. |
 | `UnscannableArchiveError` | The archive is too deep or too large to scan to the bottom. Ask whether to unpack one layer or send a link. (`EncryptedArchiveError` is one kind of this, so catch this name to catch both.) |
@@ -152,6 +151,7 @@ only the **action to add** per exception.
 | `UnknownContactError` | The exception lists the aliases it knows, so let the user pick one or give an address directly. |
 | `ContactCycleError` | None — the exception draws the loop. |
 | `InvalidMessageError` | A recipient or the subject is empty. Get it from the user and reassemble. |
+| `InvalidAddressError` | An address given to `set-password`, `add-contact`, or `add-group` is malformed (or a contact name has an `@`). Fix the address and retry. |
 | `RecipientRefusedError` | Suspect a typo in the address first. |
 | `AuthenticationFailedError` | None — the exception carries that provider's full requirements. |
 | `UnknownAccountError` / `UnknownProviderError` | An account or provider not in the config. Go to "First-time setup" below. |
@@ -166,12 +166,13 @@ path down:
 mailmail setup
 ```
 
-It prints where the config and credentials belong -- computed from `MAILMAIL_CONFIG`,
-`MAILMAIL_CREDENTIALS`, and `XDG_CONFIG_HOME`, so it is right even when the user set
-one of those -- plus a starter template. Then store the app password at a prompt:
+It prints where the config and credentials belong -- computed from `MAILMAIL_CONFIG`
+and `XDG_CONFIG_HOME`, so it is right even when the user set one of those. Set up a
+sending account in one step -- this writes the config (the provider is inferred from
+the domain) and stores the app password at a prompt:
 
 ```sh
-mailmail set-password --account naver
+mailmail set-password you@naver.com --alias me-naver
 ```
 
 **Never write a password in plain text into the chat or a script.** It stays in the

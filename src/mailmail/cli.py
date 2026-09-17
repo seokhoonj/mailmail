@@ -32,6 +32,10 @@ from mailmail import (
     MailmailError,
     SendReceipt,
     __version__,
+    account_for,
+    add_account,
+    add_contact,
+    add_group,
     default_config_path,
     load_config,
     resolve_recipients,
@@ -103,10 +107,11 @@ def _build_parser() -> argparse.ArgumentParser:
     subcommands = parser.add_subparsers(dest="command", required=True)
 
     send_parser = subcommands.add_parser("send", help="send one message")
-    send_parser.add_argument("--to", action="append", metavar="ADDR",
-                             help="a recipient address or alias; repeat for several")
-    send_parser.add_argument("--cc", action="append", metavar="ADDR", help="copy")
-    send_parser.add_argument("--bcc", action="append", metavar="ADDR",
+    send_parser.add_argument("--to", action="append", metavar="RECIPIENT",
+                             help="a recipient address, contact, or group; "
+                                  "repeat for several")
+    send_parser.add_argument("--cc", action="append", metavar="RECIPIENT", help="copy")
+    send_parser.add_argument("--bcc", action="append", metavar="RECIPIENT",
                              help="blind copy")
     send_parser.add_argument("--subject", required=True, help="the subject line")
     body_source = send_parser.add_mutually_exclusive_group()
@@ -117,7 +122,7 @@ def _build_parser() -> argparse.ArgumentParser:
                              help="an HTML alternative to the plain-text body")
     send_parser.add_argument("--attach", action="append", type=Path, metavar="PATH",
                              help="a file to attach; repeat for several")
-    send_parser.add_argument("--account", metavar="NAME",
+    send_parser.add_argument("--account", metavar="HANDLE",
                              help="which configured mailbox to send as")
     send_parser.add_argument("--config", type=Path, metavar="PATH",
                              help="a configuration file other than the default")
@@ -128,7 +133,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     send_bulk_parser.add_argument("csv", type=Path, metavar="CSV",
                                   help="a CSV whose columns are the message fields")
-    send_bulk_parser.add_argument("--account", metavar="NAME",
+    send_bulk_parser.add_argument("--account", metavar="HANDLE",
                                   help="which configured mailbox to send as")
     send_bulk_parser.add_argument("--config", type=Path, metavar="PATH",
                                   help="a configuration file other than the default")
@@ -147,13 +152,40 @@ def _build_parser() -> argparse.ArgumentParser:
     setup_parser.set_defaults(handler=_setup_cmd)
 
     set_password_parser = subcommands.add_parser(
-        "set-password", help="store an account's app password (prompted, not typed)"
+        "set-password",
+        help="set up a sending account: store its app password (prompted, not typed)",
     )
-    set_password_parser.add_argument("--account", metavar="NAME",
-                                     help="which mailbox the password is for")
+    set_password_parser.add_argument(
+        "email", metavar="EMAIL",
+        help="the sender address; the provider is inferred from its domain")
+    set_password_parser.add_argument(
+        "--alias", metavar="NAME",
+        help="a short handle for the account (e.g. me-naver)")
     set_password_parser.add_argument("--config", type=Path, metavar="PATH",
                                      help="a configuration file other than the default")
     set_password_parser.set_defaults(handler=_set_password_cmd)
+
+    add_contact_parser = subcommands.add_parser(
+        "add-contact", help="add or update an address-book alias for one address"
+    )
+    add_contact_parser.add_argument("name", metavar="NAME",
+                                    help="the alias (e.g. lead)")
+    add_contact_parser.add_argument("address", metavar="ADDRESS",
+                                    help="the email address it stands for")
+    add_contact_parser.add_argument("--config", type=Path, metavar="PATH",
+                                    help="a configuration file other than the default")
+    add_contact_parser.set_defaults(handler=_add_contact_cmd)
+
+    add_group_parser = subcommands.add_parser(
+        "add-group", help="add or update an address-book group of members"
+    )
+    add_group_parser.add_argument("name", metavar="NAME",
+                                  help="the group alias (e.g. team)")
+    add_group_parser.add_argument("member", metavar="MEMBER", nargs="+",
+                                  help="an address or an existing alias; several")
+    add_group_parser.add_argument("--config", type=Path, metavar="PATH",
+                                  help="a configuration file other than the default")
+    add_group_parser.set_defaults(handler=_add_group_cmd)
 
     return parser
 
@@ -186,9 +218,9 @@ def _send_bulk_cmd(args: argparse.Namespace) -> int:
 def _contacts_cmd(args: argparse.Namespace) -> int:
     config = load_config(args.config)
     print("Accounts:")
-    for name, account in sorted(config.account_by_name.items()):
-        default_marker = "  (default)" if name == config.default_account else ""
-        print(f"  {name}  {account.username}{default_marker}")
+    for handle, account in sorted(config.account_by_handle.items()):
+        default_marker = "  (default)" if handle == config.default_account else ""
+        print(f"  {handle}  {account.email}{default_marker}")
     if not config.address_book:
         print("Contacts: (none)")
         return 0
@@ -210,21 +242,41 @@ def _setup_cmd(args: argparse.Namespace) -> int:
     print(f"config file:      {config_path}  {_existence_note(config_path)}")
     print(f"credentials file: {credentials_path}  {_existence_note(credentials_path)}")
     print()
-    print("Create the config at the path above with, for example:\n")
+    print("Set up a sending account -- writes the config and stores the password:\n")
+    print("  mailmail set-password you@naver.com --alias me-naver")
+    print()
+    print("Add address-book entries:\n")
+    print("  mailmail add-contact lead lead@example.com")
+    print("  mailmail add-group team me lead")
+    print()
+    print("Or write the config by hand, for example:\n")
     print(STARTER_CONFIG)
-    print("Then store each account's app password with:")
-    print("  mailmail set-password --account naver")
     return 0
 
 
 def _set_password_cmd(args: argparse.Namespace) -> int:
-    config = load_config(args.config)
-    account = config.resolve_account(args.account)
-    # Prompted, never taken as an argument: a password on the command line lands
-    # in the shell history and in `ps`.
-    password = getpass.getpass(f"{account.username} app password: ")
+    # Validate the address and infer the provider before prompting, so a typo or an
+    # unsupported domain fails without asking for a secret, and nothing is written.
+    account = account_for(args.email, alias=args.alias)
+    # Prompted, never taken as an argument: a password on the command line lands in the
+    # shell history and in `ps`. Prompt before writing, so a cancelled prompt leaves no
+    # half-configured account behind.
+    password = getpass.getpass(f"{account.email} app password: ")
+    add_account(account, path=args.config)
     store_password(account, password)
-    print(f"stored the app password for {account.username}")
+    print(f"stored the app password for {account.handle}")
+    return 0
+
+
+def _add_contact_cmd(args: argparse.Namespace) -> int:
+    add_contact(args.name, args.address, path=args.config)
+    print(f"added contact {args.name} -> {args.address}")
+    return 0
+
+
+def _add_group_cmd(args: argparse.Namespace) -> int:
+    add_group(args.name, tuple(args.member), path=args.config)
+    print(f"added group {args.name} -> {', '.join(args.member)}")
     return 0
 
 

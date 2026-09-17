@@ -127,7 +127,7 @@ def _account_pointed_at(port) -> SmtpAccount:
         blocked_extensions = frozenset(),
         login_requirements = "n/a",
     )
-    return SmtpAccount(name="test", username="me@example.com", provider=provider)
+    return SmtpAccount(email="me@example.com", alias="test", provider=provider)
 
 
 class TestAServerNobodyVouchesFor:

@@ -18,7 +18,7 @@ from mailmail import SmtpAccount, store_password
 from mailmail.cli import main
 from mailmail.provider import NAVER
 
-ACCOUNT = SmtpAccount(name="naver", username="me@example.com", provider=NAVER)
+ACCOUNT = SmtpAccount(email="me@example.com", alias="naver", provider=NAVER)
 
 CONFIG_TOML = """\
 default_account = "naver"
@@ -310,21 +310,67 @@ class TestSetup:
         assert code == 0
         out = capsys.readouterr().out
         assert "config file:" in out
-        assert 'default_account = "naver"' in out
+        assert 'default_account = "personal"' in out
+        assert "mailmail set-password" in out  # the one-shot setup command
 
 
 class TestSetPassword:
     def test_prompts_and_stores_without_the_password_on_the_command_line(
-        self, config_file, fake_smtp, monkeypatch, capsys
+        self, tmp_path, fake_smtp, monkeypatch, capsys
     ):
         monkeypatch.setattr("getpass.getpass", lambda prompt="": "typed-app-pw")
-        code = main(["set-password", "--account", "naver"])
+        config = tmp_path / "config.toml"
+        code = main(["set-password", "me@naver.com", "--alias", "me-naver",
+                     "--config", str(config)])
         assert code == 0
-        assert "stored the app password for me@example.com" in capsys.readouterr().out
-        # The stored password is now the one a send would use.
-        from mailmail import resolve_password
+        assert "stored the app password for me-naver" in capsys.readouterr().out
+        # It wrote the account into the config, provider inferred from the domain...
+        text = config.read_text(encoding="utf-8")
+        assert 'email = "me@naver.com"' in text
+        assert 'alias = "me-naver"' in text
+        # ...and the stored password is the one a send would use.
+        from mailmail import account_for, resolve_password
 
-        assert resolve_password(ACCOUNT) == "typed-app-pw"
+        account = account_for("me@naver.com", alias="me-naver")
+        assert resolve_password(account) == "typed-app-pw"
+
+    def test_an_unsupported_domain_is_refused_before_prompting(
+        self, tmp_path, fake_smtp, monkeypatch, capsys
+    ):
+        prompted = False
+
+        def spy(prompt: str = "") -> str:
+            nonlocal prompted
+            prompted = True
+            return "x"
+
+        monkeypatch.setattr("getpass.getpass", spy)
+        config = tmp_path / "config.toml"
+        code = main(["set-password", "me@hanmail.net", "--config", str(config)])
+        assert code == 1
+        assert not prompted  # rejected before asking for a secret
+        assert not config.exists()  # and nothing written
+        assert "unsupported email domain" in capsys.readouterr().err
+
+
+class TestAddressBookCommands:
+    def test_add_contact_writes_an_alias(self, tmp_path, capsys):
+        config = tmp_path / "config.toml"
+        assert main(["add-contact", "lead", "lead@example.com",
+                     "--config", str(config)]) == 0
+        assert 'lead = "lead@example.com"' in config.read_text(encoding="utf-8")
+
+    def test_add_group_writes_members(self, tmp_path, capsys):
+        config = tmp_path / "config.toml"
+        assert main(["add-group", "team", "me", "lead@example.com",
+                     "--config", str(config)]) == 0
+        assert 'team = ["me", "lead@example.com"]' in config.read_text(encoding="utf-8")
+
+    def test_add_contact_rejects_a_malformed_address(self, tmp_path, capsys):
+        config = tmp_path / "config.toml"
+        assert main(["add-contact", "lead", "not-an-email",
+                     "--config", str(config)]) == 1
+        assert "not a valid email" in capsys.readouterr().err
 
 
 class TestUsage:

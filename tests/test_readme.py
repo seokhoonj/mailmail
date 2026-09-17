@@ -68,7 +68,7 @@ class TestTheConfigExampleWorks:
         assert tomllib.loads(_config_block())
 
     def test_it_loads(self, readme_config):
-        assert readme_config.account_by_name
+        assert readme_config.account_by_handle
 
     def test_every_alias_it_defines_resolves(self, readme_config):
         """The P0. `team` referred to `me`, and `me` was not there."""
@@ -94,7 +94,7 @@ class TestTheConfigExampleWorks:
         assert "[defaults]" not in _config_block()
 
     def test_the_accounts_it_defines_resolve(self, readme_config):
-        for name in readme_config.account_by_name:
+        for name in readme_config.account_by_handle:
             assert readme_config.resolve_account(name).provider
 
     def test_the_default_account_is_one_of_them(self, readme_config):

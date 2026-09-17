@@ -27,6 +27,10 @@ from mailmail.attachment import Attachment
 from mailmail.config import (
     STARTER_CONFIG,
     Config,
+    account_for,
+    add_account,
+    add_contact,
+    add_group,
     config_dir,
     default_config_path,
     load_config,
@@ -47,6 +51,7 @@ from mailmail.errors import (
     ContactError,
     CredentialsError,
     EncryptedArchiveError,
+    InvalidAddressError,
     InvalidMessageError,
     MailmailError,
     MessageTooLargeError,
@@ -80,6 +85,7 @@ __all__ = [
     "CredentialsError",
     "EncryptedArchiveError",
     "HTMLLayout",
+    "InvalidAddressError",
     "InvalidMessageError",
     "Mail",
     "MailProvider",
@@ -98,6 +104,10 @@ __all__ = [
     "UnknownContactError",
     "UnknownProviderError",
     "UnscannableArchiveError",
+    "account_for",
+    "add_account",
+    "add_contact",
+    "add_group",
     "compose_message",
     "config_dir",
     "default_config_path",
@@ -110,7 +120,7 @@ __all__ = [
     "store_password",
 ]
 
-__version__ = "0.3.1"
+__version__ = "0.4.0"
 
 
 def send(
