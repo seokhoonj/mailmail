@@ -479,8 +479,8 @@ The exception message states, in words, what is wrong and how to fix it.
 
 | Exception | Meaning |
 |---|---|
-| `ConfigError` | The config file is missing or malformed. Go to step 2 |
-| `MissingPasswordError` | No password stored yet. Go to step 3 |
+| `ConfigError` | The config file is missing or malformed. See [2. Configure your accounts](#2-configure-your-accounts) |
+| `MissingPasswordError` | No password stored yet. See [3. Get an app password](#3-get-an-app-password) |
 | `UnknownContactError` | A name that isn't in the address book. It lists the names it knows |
 | `BlockedAttachmentError` | A file the mail service blocks. Share it as a link |
 | `MessageTooLargeError` | The attachments are over the limit |

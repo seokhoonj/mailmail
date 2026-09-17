@@ -452,8 +452,8 @@ New-Item -ItemType SymbolicLink -Path "$HOME\.claude\skills\send" `
 
 | 예외 | 원인과 조치 |
 |---|---|
-| `ConfigError` | 설정 파일이 없거나 형식이 잘못됐습니다. 2단계(계정 설정) 참고 |
-| `MissingPasswordError` | 비밀번호가 아직 저장되지 않았습니다. 3단계(앱 비밀번호 발급) 참고 |
+| `ConfigError` | 설정 파일이 없거나 형식이 잘못됐습니다. [2. 계정 설정](#2-계정-설정) 참고 |
+| `MissingPasswordError` | 비밀번호가 아직 저장되지 않았습니다. [3. 앱 비밀번호 발급](#3-앱-비밀번호-발급) 참고 |
 | `UnknownContactError` | 주소록에 없는 이름입니다. 등록된 이름 목록을 함께 알립니다 |
 | `BlockedAttachmentError` | 메일 서비스가 차단하는 파일입니다. 링크로 공유합니다 |
 | `MessageTooLargeError` | 첨부가 한도를 넘습니다 |
