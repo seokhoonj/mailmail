@@ -125,20 +125,24 @@ class Config:
 
 
 def config_dir() -> Path:
-    """mailmail's directory on the machine: `config.toml` and the `0600`
-    `credentials.json` beside it.
+    """mailmail's directory on the machine: `config.toml` and -- by default -- the
+    `0600` `credentials.json` beside it.
 
     Delegated to credbox's `config_dir`, so the config this module writes and the
-    credential store credbox writes resolve to the *same* directory -- co-located by
-    construction under whatever layout credbox is on -- instead of two hand-rolled
-    resolvers that could drift apart. By default that is `$XDG_CONFIG_HOME/mailmail`
+    credential store credbox writes resolve to the *same* directory by default,
+    co-located under whatever layout credbox is on, instead of two hand-rolled
+    resolvers that could drift apart. The one override that parts them is deliberate:
+    `MAILMAIL_STORE_APP` redirects only the store (to fold mailmail into a host's
+    shared credentials), leaving this config where it is. By default that is
+    `$XDG_CONFIG_HOME/mailmail`
     when that holds an absolute path, else `~/.config/mailmail` (the git / ssh / aws
     convention; a relative, blank, or unresolvable `XDG_CONFIG_HOME` is ignored per the
     XDG spec). It follows credbox's layout, so a machine or host that puts credbox on
     the native layout (`CREDBOX_LAYOUT=native`) moves the config to the OS-native dir --
-    but the store moves with it, so the two stay together. `MAILMAIL_CONFIG_DIR` is an
-    absolute-path override credbox honors for both files at once; the config *file*
-    keeps its own per-file override, `MAILMAIL_CONFIG` (see `default_config_path`).
+    but the store moves with it, so the two stay together. There is no per-app override
+    for the directory itself (credbox has one for its data/state dirs, not config); to
+    put the config elsewhere, set an absolute `XDG_CONFIG_HOME`, or point
+    `MAILMAIL_CONFIG` (see `default_config_path`) at a single config file.
 
     Raises
     ------

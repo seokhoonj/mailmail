@@ -175,24 +175,58 @@ class TestStoreFailuresWrapAsCredentialsError:
     def test_a_write_failure_hides_the_password(self, monkeypatch):
         secret = "sk-NEVER-LEAK-THIS"
 
-        def fail(*args, **kwargs):
-            raise CredBoxError("backend write failed")
+        class FailStore:
+            def set(self, *args, **kwargs):
+                raise CredBoxError("backend write failed")
 
-        monkeypatch.setattr("mailmail.credentials._store.set", fail)
+        monkeypatch.setattr("mailmail.credentials._get_store", lambda: FailStore())
         with pytest.raises(CredentialsError) as caught:
             store_password(NAVER_ACCOUNT, secret)
-        error: BaseException | None = caught.value
-        while error is not None:
+        # Walk the whole chain -- __cause__ (explicit `from`) AND __context__ (implicit)
+        # -- with a cycle guard, so a password leaked through either link is caught.
+        seen: set[int] = set()
+        pending: list[BaseException | None] = [caught.value]
+        while pending:
+            error = pending.pop()
+            if error is None or id(error) in seen:
+                continue
+            seen.add(id(error))
             assert secret not in str(error)
-            error = error.__cause__
+            pending += [error.__cause__, error.__context__]
 
     def test_a_delete_failure_is_a_credentials_error(self, monkeypatch):
-        def fail(*args, **kwargs):
-            raise CredBoxError("backend write failed")
+        class FailStore:
+            def unset(self, *args, **kwargs):
+                raise CredBoxError("backend write failed")
 
-        monkeypatch.setattr("mailmail.credentials._store.unset", fail)
+        monkeypatch.setattr("mailmail.credentials._get_store", lambda: FailStore())
         with pytest.raises(CredentialsError):
             delete_password(NAVER_ACCOUNT)
+
+    def test_a_malformed_store_binding_is_a_credentials_error(self, monkeypatch):
+        # A bad MAILMAIL_NAMESPACE surfaces at the call as a CredentialsError, not
+        # credbox's foreign InvalidAppNameError. (`_reset_store_cache` isolates the
+        # lazily-built store, so this binding does not leak to another test.)
+        monkeypatch.setenv("MAILMAIL_NAMESPACE", "../evil")
+        with pytest.raises(CredentialsError, match="store binding is invalid"):
+            resolve_password(NAVER_ACCOUNT)
+
+    def test_import_mailmail_does_not_crash_on_a_malformed_binding(self):
+        # The store is built lazily, so `import mailmail` with a bad MAILMAIL_NAMESPACE
+        # must succeed -- a credential *call* then raises. An in-process test can't show
+        # this (mailmail is already imported at collection), so use a fresh subprocess.
+        import os
+        import subprocess
+        import sys
+
+        result = subprocess.run(
+            [sys.executable, "-c", "import mailmail; print('imported ok')"],
+            capture_output=True,
+            text=True,
+            env={**os.environ, "MAILMAIL_NAMESPACE": "../evil"},
+        )
+        assert result.returncode == 0, result.stderr
+        assert "imported ok" in result.stdout
 
 
 class TestTheEnvironmentPasswordKnowsWhichAccountItIsFor:

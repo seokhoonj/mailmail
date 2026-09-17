@@ -29,6 +29,7 @@ back to the address on read.
 from __future__ import annotations
 
 import os
+from functools import lru_cache
 
 from credbox import BlankSecretError, CredBoxError, Credentials, env_var_prefix
 
@@ -46,12 +47,29 @@ __all__ = [
 # `for_app` (not the bare `Credentials(...)`) makes mailmail embeddable: a host that
 # sets MAILMAIL_STORE_APP / MAILMAIL_NAMESPACE before importing mailmail redirects the
 # binding into the host's own store under a "mailmail" section, no code change here.
-# credbox resolves the store path per call, so a test repointing XDG_CONFIG_HOME still
-# isolates it.
 _STORE_APP = "mailmail"
-_store = Credentials.for_app(_STORE_APP)
 
 PASSWORD_ENV_VAR = "MAILMAIL_PASSWORD"
+
+
+@lru_cache(maxsize=1)
+def _get_store() -> Credentials:
+    """mailmail's credential store, built on first use and cached.
+
+    Built lazily rather than at import: `for_app` validates the `MAILMAIL_STORE_APP` /
+    `MAILMAIL_NAMESPACE` override eagerly, so a malformed one would raise credbox's
+    `InvalidAppNameError` -- a foreign type -- and abort `import mailmail` itself, in
+    the host-embedding scenario `for_app` exists to serve. Deferred here, it comes back
+    as a `CredentialsError` (a `MailmailError`) at the send/store call site, inside the
+    documented catch surface. credbox resolves the store path per call, so the cached
+    binding still isolates a test that repoints `XDG_CONFIG_HOME`.
+    """
+    try:
+        return Credentials.for_app(_STORE_APP)
+    except CredBoxError as err:
+        raise CredentialsError(
+            f"the mailmail credential store binding is invalid: {err}"
+        ) from err
 
 
 def resolve_password(account: SmtpAccount) -> str:
@@ -69,16 +87,18 @@ def resolve_password(account: SmtpAccount) -> str:
         Neither the environment nor the file has a password for this account.
     CredentialsError
         The credential store could not be read or was refused as unsafe (propagated
-        from the store).
+        from the store), or its binding is invalid (a malformed `MAILMAIL_STORE_APP` /
+        `MAILMAIL_NAMESPACE`).
     """
     try:
         # override carries mailmail's own env resolution. When nothing is found under
         # the handle and the handle is an alias, fall back to the address -- where a
         # password set before the key became the handle was filed.
         env_password = _load_password_from_env(account)
-        secret = _store.secret(account.handle, override=env_password)
+        store = _get_store()
+        secret = store.secret(account.handle, override=env_password)
         if secret is None and account.handle != account.email:
-            secret = _store.secret(account.email)
+            secret = store.secret(account.email)
     except CredBoxError as err:
         raise CredentialsError(
             f"the mailmail credential store could not be read: {err}"
@@ -106,7 +126,7 @@ def store_password(account: SmtpAccount, password: str) -> None:
         worse than storing nothing), or the store could not be read or written.
     """
     try:
-        _store.set(account.handle, value=password)
+        _get_store().set(account.handle, value=password)
     except BlankSecretError as err:
         raise CredentialsError(
             f"refusing to store an empty password for {account.handle}; paste the "
@@ -129,7 +149,7 @@ def delete_password(account: SmtpAccount) -> None:
         The store could not be written (propagated from the store).
     """
     try:
-        _store.unset(account.handle)
+        _get_store().unset(account.handle)
     except CredBoxError as err:
         raise CredentialsError(
             f"could not remove the password for {account.handle}: {err}"
