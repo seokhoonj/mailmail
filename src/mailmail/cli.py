@@ -251,6 +251,12 @@ def _contacts_cmd(args: argparse.Namespace) -> int:
 def _setup_cmd(args: argparse.Namespace) -> int:
     config_path = default_config_path()
     try:
+        # The store's directory, for display. This is the standalone location; a host
+        # that redirects the store with MAILMAIL_STORE_APP (to embed mailmail) moves the
+        # real file elsewhere, and this line would then name the default path, not the
+        # redirected one -- credbox exposes no resolved-store-path locator to ask
+        # instead. Correct for every standalone run (the command's audience); revisit
+        # when a host first embeds mailmail and credbox grows that locator.
         credentials_path = config_dir("mailmail") / "credentials.json"
     except CredBoxError as err:
         # No home directory (a container run as an arbitrary uid). Surface it as a

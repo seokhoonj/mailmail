@@ -237,6 +237,9 @@ def add_account(account: SmtpAccount, *, path: Path | str | None = None) -> None
         not be written.
     """
     with _editing_config(path) as document:
+        # `_resolve_path` again only for the refusal message's path; it is deterministic
+        # (no env change inside this block), so it names the same file `_editing_config`
+        # resolved to.
         _refuse_legacy_accounts(document, path=_resolve_path(path))
         if not document.has_in_array(
             "accounts", match_field="email", match_value=account.email

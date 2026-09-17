@@ -13,8 +13,8 @@ NAVER·Gmail 계정으로 메일을 보내는 파이썬 패키지. 첨부파일,
 ---
 
 - [빠른 시작](#빠른-시작)
-- [구조 한눈에](#구조-한눈에)
-- [준비물](#준비물)
+- [동작 개요](#동작-개요)
+- [사전 준비](#사전-준비)
 - [1. 설치](#1-설치)
 - [2. 계정 설정](#2-계정-설정) (`~/.config/mailmail/config.toml`)
 - [3. 앱 비밀번호 받기](#3-앱-비밀번호-받기) — NAVER, Gmail
@@ -45,7 +45,7 @@ Windows·macOS·Linux에서 동작합니다. 설치 시 credbox(자격증명 저
 두 개의 작은 first-party 라이브러리를 함께 끌어오고 그 밖의 것은 없습니다. 둘 다 자체로
 무의존성입니다.
 
-## 구조 한눈에
+## 동작 개요
 
 `send()` 한 번은 설정을 읽고, 계정을 고르고, 별칭을 풀어 메시지를 만들고, provider가
 반송할 것 — 차단된 파일 형식, 크기 한도를 넘는 메일, 수신자 100명 초과 — 은 연결을 열기 전에 막고, 결과를
@@ -63,7 +63,7 @@ flowchart TB
     server --> receipt["SendReceipt<br/>accepted · refused · message-id"]
 ```
 
-## 준비물
+## 사전 준비
 
 - **Python 3.11 이상.** 터미널에서 `python --version`으로 확인합니다. (Windows에서는 `py
   --version`일 수 있습니다.) 없거나 낮으면 [python.org](https://www.python.org/downloads/)에서
@@ -161,23 +161,18 @@ team    = ["manager", "lead"]
 
 ### 받은 비밀번호 저장하기
 
-**한 번만 저장하면 그 뒤로는 다시 묻지 않습니다.** 아래를 실행하면 입력을 받습니다.
+**명령 하나가 계정을 기록하고 비밀번호를 저장하며**, 그 뒤로는 다시 묻지 않습니다. 2단계를
+건너뛰었다면 `config.toml`을 만들어 주고, 도메인으로 제공자를 알아낸 뒤, 비밀번호를
+입력받습니다 — 방금 발급한 것을 붙여넣으면 됩니다.
 
 ```sh
-python -c "
-from getpass import getpass
-from mailmail import load_config, store_password
-
-account = load_config().resolve_account('personal')               # Gmail이면 'work'
-password = getpass(f'{account.email} app password: ').strip()
-print(f'  length: {len(password)}')                               # NAVER 12자리, Gmail 16자리
-store_password(account, password)
-print('  saved')
-"
+mailmail set-password you@naver.com --alias personal   # Gmail이면 you@gmail.com --alias work
 ```
 
-붙여넣을 때 **화면에 아무것도 안 보이는 게 정상입니다.** 그래서 두 번 붙여넣어도 알 수가
-없으니, 위가 찍어주는 자릿수로 확인합니다.
+붙여넣을 때 **화면에 아무것도 안 보이는 게 정상입니다** — `sudo`처럼 프롬프트가 가립니다.
+저장되면 `stored the app password for personal`이 찍힙니다. NAVER 비밀번호는 12자리,
+Gmail은 16자리입니다. 붙여넣을 때 화면에 안 보이니 두 번 들어가도 알 수 없는데, 나중에
+로그인이 거부되면 보통 이게 원인이니 다시 실행하면 됩니다.
 
 비밀번호는 설정 파일이 아니라 같은 폴더의 `credentials.json`에 **본인만 읽을 수 있게**
 저장됩니다. 이 파일은 암호화되지 않습니다. 그래서 여기 들어가는 것은 **앱 비밀번호뿐입니다** —
@@ -360,9 +355,14 @@ mailmail import-contacts contacts.csv                 # name,email CSV로 여러
 않습니다. `add-contact`·`add-group`은 `config.toml`을 제자리 편집해 주석과 서식을 그대로
 둡니다. `import-contacts`는 `name`·`email` 컬럼을 가진 CSV를 읽어 모든 행을 한 번에
 추가합니다. 주소가 잘못된 행이 있으면 그 행을 짚어 알리고 아무것도 쓰지 않아서, 오타 하나로
-주소록이 반만 채워지는 일이 없습니다. 차단된 첨부, 한도를 넘는 메일, 없는 비밀번호처럼 발송이 거부할 것은 파이썬에서와
-똑같이 연결을 열기 전에 알려줍니다. 일부만 거부되면 종료 코드가 0이 아니어서 스크립트가
-알아챌 수 있습니다.
+주소록이 반만 채워지는 일이 없습니다.
+
+`send`·`send-bulk`에서는 차단된 첨부, 한도를 넘는 메일, 없는 비밀번호처럼 제공자가 거부할
+것을 파이썬에서와 똑같이 연결을 열기 전에 알려줍니다. 일부만 거부되면 종료 코드가 0이 아니어서
+스크립트가 알아챌 수 있습니다.
+
+`setup`을 제외한 모든 명령은 `--config PATH`로 기본 위치(`mailmail setup`이 찍어 주는 곳)
+대신 다른 설정 파일을 지정할 수 있습니다.
 
 ## 7. 못 보내는 파일
 

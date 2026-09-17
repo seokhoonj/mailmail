@@ -177,23 +177,18 @@ app password. If a setup that used to work suddenly stopped, this is why.
 
 ### Store the password you got
 
-**Store it once and you are not asked again.** Running this prompts for it:
+**One command writes the account and stores the password**, and you are not asked
+again. It creates `config.toml` if you skipped step 2, infers the provider from the
+address domain, and prompts for the password — paste the one you just generated:
 
 ```sh
-python -c "
-from getpass import getpass
-from mailmail import load_config, store_password
-
-account = load_config().resolve_account('personal')               # 'work' for the Gmail one
-password = getpass(f'{account.email} app password: ').strip()
-print(f'  length: {len(password)}')                               # Naver 12, Gmail 16
-store_password(account, password)
-print('  saved')
-"
+mailmail set-password you@naver.com --alias personal   # you@gmail.com --alias work for Gmail
 ```
 
-**Nothing showing on screen while you paste is normal.** So you can't tell if you
-pasted twice — check the length it prints.
+**Nothing showing on screen while you paste is normal** — the prompt hides it, like
+`sudo`. It prints `stored the app password for personal` when it lands. The Naver
+password is 12 characters and Gmail's is 16; nothing shows as you paste, so if a login
+is refused later, a stray double-paste is the usual cause — just run it again.
 
 The password is stored, **readable only by you**, in `credentials.json` beside the
 config — not in the config file. That file is not encrypted, so the only thing that
@@ -385,10 +380,14 @@ mailmail import-contacts contacts.csv                 # add many at once from a 
 it never lands in your shell history. `add-contact` and `add-group` edit `config.toml` in
 place, leaving your comments and layout untouched. `import-contacts` reads a CSV with
 `name` and `email` columns and adds every row in one pass; a row with a bad address is
-named and nothing is written, so a typo never leaves the book half-filled. Anything a send would reject — a blocked
-attachment, a message over the limit, a missing password — is reported the same way it
-is from Python, before a connection opens. A partial refusal exits non-zero, so a script
-can tell.
+named and nothing is written, so a typo never leaves the book half-filled.
+
+For `send` and `send-bulk`, anything the provider would reject — a blocked attachment, a
+message over the limit, a missing password — is reported the same way it is from Python,
+before a connection opens. A partial refusal exits non-zero, so a script can tell.
+
+Every command except `setup` takes `--config PATH` to use a config file other than the
+default one `mailmail setup` prints.
 
 ## 7. Files you can't send
 
