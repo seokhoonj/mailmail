@@ -30,6 +30,7 @@ __all__ = [
     "ContactError",
     "CredentialsError",
     "EncryptedArchiveError",
+    "InvalidAddressError",
     "InvalidMessageError",
     "MailmailError",
     "MessageTooLargeError",
@@ -78,6 +79,16 @@ class InvalidMessageError(MailmailError, ValueError):
     and what callers already catch. Inheriting both keeps the promise at the top
     of this file true -- that one `except MailmailError` guards a whole send --
     without breaking anyone who reasonably wrote `except ValueError`.
+    """
+
+
+class InvalidAddressError(MailmailError, ValueError):
+    """An email address given to set up an account or an address-book entry is not
+    well-formed.
+
+    Raised by the setup commands (`set-password`, `add-contact`, `add-group`) so a typo
+    is refused as it is entered, not stored and then discovered as a failed send. Also a
+    `ValueError`, like `InvalidMessageError`, so `except ValueError` still catches it.
     """
 
 

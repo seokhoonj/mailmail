@@ -19,18 +19,18 @@ Store nothing else here.
 
 The store itself -- its location under `config_dir()`, the 0600 file mode, the atomic
 read-modify-write, the env-over-file resolution, and stripping a pasted value's
-trailing newline -- is credbox's. This module maps an account onto that store: the
-file is keyed by the account's username (the email address), while the environment is
-keyed by the account *name*, because the two answer different questions (see
-`_load_password_from_env`).
+trailing newline -- is credbox's. This module maps an account onto that store: both the
+file and the environment are keyed by the account's *handle* (its alias, or its address
+when it has none), so an account is named the same way everywhere. A password stored
+before the key was the handle -- filed under the address -- is still found, by falling
+back to the address on read.
 """
 
 from __future__ import annotations
 
 import os
-import re
 
-from credbox import BlankSecretError, CredBoxError, Credentials
+from credbox import BlankSecretError, CredBoxError, Credentials, env_var_prefix
 
 from mailmail.account import SmtpAccount
 from mailmail.errors import CredentialsError, MissingPasswordError
@@ -72,12 +72,13 @@ def resolve_password(account: SmtpAccount) -> str:
         from the store).
     """
     try:
-        # override carries mailmail's own env resolution; credbox also probes an env
-        # var named the username, a no-op for an email address (never a valid shell
-        # variable name).
-        secret = _store.secret(
-            account.username, override=_load_password_from_env(account)
-        )
+        # override carries mailmail's own env resolution. When nothing is found under
+        # the handle and the handle is an alias, fall back to the address -- where a
+        # password set before the key became the handle was filed.
+        env_password = _load_password_from_env(account)
+        secret = _store.secret(account.handle, override=env_password)
+        if secret is None and account.handle != account.email:
+            secret = _store.secret(account.email)
     except CredBoxError as err:
         raise CredentialsError(
             f"the mailmail credential store could not be read: {err}"
@@ -85,7 +86,7 @@ def resolve_password(account: SmtpAccount) -> str:
     if secret is not None:
         return secret.reveal()
     raise MissingPasswordError(
-        f"no password stored for {account.username}; store the app password from "
+        f"no password stored for {account.handle}; store the app password from "
         f"{account.provider.name} with store_password(account, password), or set "
         f"{PASSWORD_ENV_VAR}"
     )
@@ -105,16 +106,16 @@ def store_password(account: SmtpAccount, password: str) -> None:
         worse than storing nothing), or the store could not be read or written.
     """
     try:
-        _store.set(account.username, value=password)
+        _store.set(account.handle, value=password)
     except BlankSecretError as err:
         raise CredentialsError(
-            f"refusing to store an empty password for {account.username}; paste the "
+            f"refusing to store an empty password for {account.handle}; paste the "
             f"app password from {account.provider.name}, or call "
             f"delete_password(account) to remove the entry"
         ) from err
     except CredBoxError as err:
         raise CredentialsError(
-            f"could not store the password for {account.username}: {err}"
+            f"could not store the password for {account.handle}: {err}"
         ) from err
 
 
@@ -128,17 +129,17 @@ def delete_password(account: SmtpAccount) -> None:
         The store could not be written (propagated from the store).
     """
     try:
-        _store.unset(account.username)
+        _store.unset(account.handle)
     except CredBoxError as err:
         raise CredentialsError(
-            f"could not remove the password for {account.username}: {err}"
+            f"could not remove the password for {account.handle}: {err}"
         ) from err
 
 
 def _load_password_from_env(account: SmtpAccount) -> str | None:
     """The password the environment offers for this account, if any.
 
-    `MAILMAIL_PASSWORD_NAVER` beats a bare `MAILMAIL_PASSWORD`, because the bare name
+    `MAILMAIL_PASSWORD_ME_NAVER` beats a bare `MAILMAIL_PASSWORD`, because the bare name
     is only unambiguous while one account exists. Reading the bare name first, with
     gmail and naver both configured, would hand one exported password to whichever
     server was asked -- a disclosure (the Gmail app password lands in Naver's
@@ -146,12 +147,14 @@ def _load_password_from_env(account: SmtpAccount) -> str | None:
     right thing to export when one account is configured or every account shares a
     password.
 
-    Anything a shell will not take in a variable name folds to `_`, so the name that is
-    read is the name that can be exported: `[accounts.me-naver]` is ordinary, but
-    `export MAILMAIL_PASSWORD_ME-NAVER=...` is not a valid identifier, so the literal
-    name could never match and would fall to the bare name -- the disclosure above,
-    again.
+    The per-account suffix folds the handle with credbox's canonical `env_var_prefix`:
+    anything a shell will not take in a variable name becomes `_`, so the name that is
+    read is the name that can be exported. A handle `me-naver` reads from
+    `MAILMAIL_PASSWORD_ME_NAVER`, and an address handle `you@gmail.com` from
+    `MAILMAIL_PASSWORD_YOU_GMAIL_COM`. The fold is lossy -- `me-naver` and `me.naver`
+    would share one name -- but `load_config` refuses a config whose handles collide
+    that way, so no two configured accounts ever reach here with the same suffix.
     """
-    suffix = re.sub(r"[^A-Z0-9]", "_", account.name.upper())
+    suffix = env_var_prefix(account.handle)
     per_account = os.environ.get(f"{PASSWORD_ENV_VAR}_{suffix}")
     return per_account or os.environ.get(PASSWORD_ENV_VAR)

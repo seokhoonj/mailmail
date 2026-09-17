@@ -45,8 +45,9 @@ send(
 Using Claude Code, you can send mail by asking, without writing any Python →
 [Use it from an AI coding agent](#8-use-it-from-an-ai-coding-agent)
 
-Runs on Windows, macOS, and Linux. Installing it installs this package and nothing
-else — it pulls in no other libraries.
+Runs on Windows, macOS, and Linux. Installing it pulls in two small first-party
+libraries — credbox (the credential store) and tomlite (the config editor) — and
+nothing else; both are themselves zero-dependency.
 
 ## At a glance
 
@@ -103,28 +104,35 @@ Create a `config.toml` under `.config/mailmail/` in your home folder. The full p
 | macOS · Linux | `~/.config/mailmail/config.toml` |
 | Windows | `C:\Users\<name>\.config\mailmail\config.toml` |
 
-Make the folder if it isn't there. Put your own addresses in:
+You don't have to write this by hand: `mailmail set-password you@naver.com --alias
+personal` (step 3) creates the file and adds the account for you, and `mailmail
+add-contact` / `add-group` fill in the address book. If you'd rather write it yourself,
+it looks like this:
 
 ```toml
-default_account = "naver"
+default_account = "personal"
 
-[accounts.naver]
-provider = "naver"
-username = "you@naver.com"
+[[accounts]]
+email = "you@naver.com"
+alias = "personal"
 
-[accounts.gmail]
-provider = "gmail"
-username = "you@gmail.com"
+[[accounts]]
+email = "you@gmail.com"
+alias = "work"
 
 [contacts]
-me   = "you@naver.com"
-lead = "lead@example.com"
-team = ["me", "lead"]
+manager = "manager@example.com"
+lead    = "lead@example.com"
+friend  = "friend@example.com"
+team    = ["manager", "lead"]
 ```
 
-- `default_account` — which account to send as when you don't pick one.
-- `[accounts.*]` — the accounts you'll use. One is enough. `provider` is `naver` or
-  `gmail`.
+- `default_account` — which account to send as when you don't pick one. It names a
+  handle: an account's `alias`, or its `email` when it has none.
+- `[[accounts]]` — the accounts you'll use, one table each. One is enough. `email` is
+  required; `alias` is an optional short handle for the mailbox (`personal`, `work`) --
+  the provider is inferred from the domain (`@naver.com`, `@gmail.com`), so it is not
+  named here.
 - `[contacts]` — an address book, optional. A group (`team`) sends to everyone in it
   at once, and a group may contain other names.
 
@@ -169,23 +177,18 @@ app password. If a setup that used to work suddenly stopped, this is why.
 
 ### Store the password you got
 
-**Store it once and you are not asked again.** Running this prompts for it:
+**One command writes the account and stores the password**, and you are not asked
+again. It creates `config.toml` if you skipped step 2, infers the provider from the
+address domain, and prompts for the password — paste the one you just generated:
 
 ```sh
-python -c "
-from getpass import getpass
-from mailmail import load_config, store_password
-
-account = load_config().resolve_account('naver')                  # 'gmail' for Gmail
-password = getpass(f'{account.username} app password: ').strip()
-print(f'  length: {len(password)}')                               # Naver 12, Gmail 16
-store_password(account, password)
-print('  saved')
-"
+mailmail set-password you@naver.com --alias personal   # you@gmail.com --alias work for Gmail
 ```
 
-**Nothing showing on screen while you paste is normal.** So you can't tell if you
-pasted twice — check the length it prints.
+**Nothing showing on screen while you paste is normal** — the prompt hides it, like
+`sudo`. It prints `stored the app password for personal` when it lands. The Naver
+password is 12 characters and Gmail's is 16; nothing shows as you paste, so if a login
+is refused later, a stray double-paste is the usual cause — just run it again.
 
 The password is stored, **readable only by you**, in `credentials.json` beside the
 config — not in the config file. That file is not encrypted, so the only thing that
@@ -202,12 +205,12 @@ python -c "
 import smtplib
 from mailmail import load_config, resolve_password
 
-for name in ('naver',):  # ('naver', 'gmail') if you stored Gmail too
+for name in ('personal',):  # ('personal', 'work') if you stored the Gmail one too
     account = load_config().resolve_account(name)
     smtp = smtplib.SMTP(account.provider.smtp_host, account.provider.smtp_port, timeout=20)
     smtp.ehlo(); smtp.starttls(); smtp.ehlo()
     try:
-        smtp.login(account.username, resolve_password(account))
+        smtp.login(account.email, resolve_password(account))
         print(f'  {name}: OK')
     except smtplib.SMTPAuthenticationError as e:
         print(f'  {name}: {e.smtp_code} {e.smtp_error.decode()[:60]}')
@@ -263,7 +266,7 @@ With an account, attachments, cc, and HTML:
 
 ```python
 receipt = send(
-    account     = "gmail",  # default_account if omitted
+    account     = "work",  # default_account if omitted
     to          = "lead",
     cc          = "team",
     bcc         = "audit@example.com",
@@ -342,7 +345,7 @@ pipe than as one shell argument:
 
 ```sh
 mailmail send --to team --subject "Month-end close" \
-    --body-file note.txt --attach close.xlsx --attach notes.pdf --account gmail
+    --body-file note.txt --attach close.xlsx --attach notes.pdf --account work
 
 mailmail send --to lead --subject "Weekly report" < note.txt
 ```
@@ -353,7 +356,7 @@ names the fields: `to`, `subject`, and `body` are required; `cc`, `bcc`, `html`,
 separates them with a semicolon:
 
 ```sh
-mailmail send-bulk batch.csv --account gmail
+mailmail send-bulk batch.csv --account work
 ```
 
 ```csv
@@ -362,19 +365,29 @@ alice@example.com,June results,"Hi Alice, yours is attached.",alice.xlsx
 team,June summary,"All figures attached.",june.xlsx;notes.pdf
 ```
 
-The other three commands set things up and check them:
+The remaining commands set things up and check them:
 
 ```sh
 mailmail setup                         # the config and credentials paths, and a template
 mailmail contacts                      # the accounts and address-book names you can use
-mailmail set-password --account naver  # store the app password, prompted
+mailmail set-password you@naver.com --alias personal  # writes config + stores the app password
+mailmail add-contact lead lead@example.com            # add an address-book alias
+mailmail add-group   team manager lead                # a group of addresses or aliases
+mailmail import-contacts contacts.csv                 # add many at once from a name,email CSV
 ```
 
 `set-password` asks for the password at a prompt instead of taking it as an argument, so
-it never lands in your shell history. Anything a send would reject — a blocked
-attachment, a message over the limit, a missing password — is reported the same way it
-is from Python, before a connection opens. A partial refusal exits non-zero, so a script
-can tell.
+it never lands in your shell history. `add-contact` and `add-group` edit `config.toml` in
+place, leaving your comments and layout untouched. `import-contacts` reads a CSV with
+`name` and `email` columns and adds every row in one pass; a row with a bad address is
+named and nothing is written, so a typo never leaves the book half-filled.
+
+For `send` and `send-bulk`, anything the provider would reject — a blocked attachment, a
+message over the limit, a missing password — is reported the same way it is from Python,
+before a connection opens. A partial refusal exits non-zero, so a script can tell.
+
+Every command except `setup` takes `--config PATH` to use a config file other than the
+default one `mailmail setup` prints.
 
 ## 7. Files you can't send
 

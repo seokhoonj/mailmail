@@ -103,8 +103,8 @@ class Mailer:
 
     def __repr__(self) -> str:
         return (
-            f"{type(self).__name__}(account={self._account.name!r}, "
-            f"username={self._account.username!r}, "
+            f"{type(self).__name__}(account={self._account.handle!r}, "
+            f"email={self._account.email!r}, "
             f"connected={self._smtp is not None})"
         )
 
@@ -201,7 +201,7 @@ class Mailer:
         `RecipientRefusedError` for a single send.
         """
         provider = self._account.provider
-        mime = message.to_mime(sender=self._account.username)
+        mime = message.to_mime(sender=self._account.email)
         payload = _as_wire_bytes(mime)
         check_message_size(len(payload), limit_bytes=provider.max_message_bytes)
         with self._session() as smtp:
@@ -242,12 +242,12 @@ class Mailer:
                 smtp.ehlo()
                 smtp.starttls(context=_make_verifying_tls_context())
             smtp.ehlo()
-            smtp.login(self._account.username, password)
+            smtp.login(self._account.email, password)
         except smtplib.SMTPAuthenticationError as err:
             smtp.close()
             raise AuthenticationFailedError(
                 f"{provider.name} rejected the password for "
-                f"{self._account.username} ({err.smtp_code} "
+                f"{self._account.email} ({err.smtp_code} "
                 f"{_as_text(err.smtp_error)}). {provider.login_requirements}"
             ) from err
         except BaseException:

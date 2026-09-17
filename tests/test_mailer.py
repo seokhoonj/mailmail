@@ -24,7 +24,7 @@ from mailmail.mailer import Mailer, _as_wire_bytes
 from mailmail.message import Message
 from mailmail.provider import GMAIL, MailProvider
 
-ACCOUNT = SmtpAccount(name="gmail", username="sender@example.com", provider=GMAIL)
+ACCOUNT = SmtpAccount(email="sender@example.com", alias="gmail", provider=GMAIL)
 
 
 @pytest.fixture(autouse=True)
@@ -47,7 +47,7 @@ TINY_LIMIT_PROVIDER = MailProvider(
     login_requirements = GMAIL.login_requirements,
 )
 TINY_LIMIT_ACCOUNT = SmtpAccount(
-    name="gmail", username="sender@example.com", provider=TINY_LIMIT_PROVIDER
+    email="sender@example.com", alias="gmail", provider=TINY_LIMIT_PROVIDER
 )
 
 
@@ -447,7 +447,7 @@ SSL_PROVIDER = MailProvider(
     login_requirements = GMAIL.login_requirements,
 )
 SSL_ACCOUNT = SmtpAccount(
-    name="sslmail", username="sender@example.com", provider=SSL_PROVIDER
+    email="sender@example.com", alias="sslmail", provider=SSL_PROVIDER
 )
 
 

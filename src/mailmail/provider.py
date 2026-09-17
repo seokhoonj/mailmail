@@ -10,7 +10,14 @@ from typing import Literal, TypeAlias
 
 from mailmail.errors import UnknownProviderError
 
-__all__ = ["GMAIL", "NAVER", "MailProvider", "SmtpSecurity", "resolve_provider"]
+__all__ = [
+    "GMAIL",
+    "NAVER",
+    "MailProvider",
+    "SmtpSecurity",
+    "provider_for_email",
+    "resolve_provider",
+]
 
 SmtpSecurity: TypeAlias = Literal["starttls", "ssl"]
 
@@ -116,6 +123,15 @@ PROVIDER_BY_NAME: dict[str, MailProvider] = {
     provider.name: provider for provider in (GMAIL, NAVER)
 }
 
+# The email domain each provider serves, so an account can be set up from its address
+# alone (`set-password you@naver.com`) without naming a provider. Kept separate from the
+# provider name because a domain need not equal it -- one provider can serve several
+# domains, and a future provider's domain may differ from its key.
+PROVIDER_BY_DOMAIN: dict[str, MailProvider] = {
+    "gmail.com": GMAIL,
+    "naver.com": NAVER,
+}
+
 
 def resolve_provider(name: str) -> MailProvider:
     """Look up a provider by its configuration key.
@@ -131,4 +147,28 @@ def resolve_provider(name: str) -> MailProvider:
         known = ", ".join(sorted(PROVIDER_BY_NAME))
         raise UnknownProviderError(
             f"unknown mail provider {name!r}; mailmail knows: {known}"
+        ) from err
+
+
+def provider_for_email(email: str) -> MailProvider:
+    """Infer the provider from an address's domain, so setup needs only the address.
+
+    The domain is matched case-insensitively. An address whose domain mailmail has no
+    provider for is not something it can send through, so this is where that shows --
+    up front, not as a bounce. A configuration that must pair a known provider with an
+    off-list domain (a Google Workspace address on a custom domain) can still name the
+    provider explicitly; this is only the default when none is named.
+
+    Raises
+    ------
+    UnknownProviderError
+        The address's domain is not one mailmail sends through.
+    """
+    domain = email.rpartition("@")[2].lower()
+    try:
+        return PROVIDER_BY_DOMAIN[domain]
+    except KeyError as err:
+        known = ", ".join(sorted(PROVIDER_BY_DOMAIN))
+        raise UnknownProviderError(
+            f"unsupported email domain in {email!r}; mailmail sends through: {known}"
         ) from err

@@ -62,10 +62,11 @@ jobs:
       - name: Types
         run: .venv/bin/mypy
 
-      - name: Confirm the only runtime dependency is credbox
-        # mailmail's one runtime dependency is credbox (itself zero-dependency); the pyproject
-        # comment says so, and a claim nothing checks quietly stops being true. A bare install
-        # must pull in credbox and nothing else, and the package must import from it.
+      - name: Confirm the runtime dependencies are credbox and tomlite
+        # mailmail's runtime dependencies are credbox (the credential store) and tomlite
+        # (the config-file editor), each itself zero-dependency; the pyproject comment says
+        # so, and a claim nothing checks quietly stops being true. A bare install must pull
+        # in exactly those two and nothing else, and the package must import from it.
         run: |
           uv venv /tmp/bare --python ${{ matrix.python-version }}
           uv pip install --python /tmp/bare/bin/python .
@@ -74,9 +75,9 @@ jobs:
           requires = md.requires('mailmail') or []
           runtime = [r for r in requires if 'extra ==' not in r]
           names = sorted({re.split(r'[<>=!~ ;\[]', r, maxsplit=1)[0] for r in runtime})
-          assert names == ['credbox'], f'unexpected runtime dependencies: {runtime}'
+          assert names == ['credbox', 'tomlite'], f'unexpected runtime dependencies: {runtime}'
           import mailmail
-          print('mailmail', mailmail.__version__, 'imports with only credbox')
+          print('mailmail', mailmail.__version__, 'imports with only credbox and tomlite')
           "
 
       - name: Confirm the console script installed

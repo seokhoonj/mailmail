@@ -18,7 +18,7 @@ from mailmail import SmtpAccount, store_password
 from mailmail.cli import main
 from mailmail.provider import NAVER
 
-ACCOUNT = SmtpAccount(name="naver", username="me@example.com", provider=NAVER)
+ACCOUNT = SmtpAccount(email="me@example.com", alias="naver", provider=NAVER)
 
 CONFIG_TOML = """\
 default_account = "naver"
@@ -310,21 +310,146 @@ class TestSetup:
         assert code == 0
         out = capsys.readouterr().out
         assert "config file:" in out
-        assert 'default_account = "naver"' in out
+        assert 'default_account = "personal"' in out
+        assert "mailmail set-password" in out  # the one-shot setup command
 
 
 class TestSetPassword:
     def test_prompts_and_stores_without_the_password_on_the_command_line(
-        self, config_file, fake_smtp, monkeypatch, capsys
+        self, tmp_path, fake_smtp, monkeypatch, capsys
     ):
         monkeypatch.setattr("getpass.getpass", lambda prompt="": "typed-app-pw")
-        code = main(["set-password", "--account", "naver"])
+        config = tmp_path / "config.toml"
+        code = main(["set-password", "me@naver.com", "--alias", "me-naver",
+                     "--config", str(config)])
         assert code == 0
-        assert "stored the app password for me@example.com" in capsys.readouterr().out
-        # The stored password is now the one a send would use.
-        from mailmail import resolve_password
+        assert "stored the app password for me-naver" in capsys.readouterr().out
+        # It wrote the account into the config, provider inferred from the domain...
+        text = config.read_text(encoding="utf-8")
+        assert 'email = "me@naver.com"' in text
+        assert 'alias = "me-naver"' in text
+        # ...and the stored password is the one a send would use.
+        from mailmail import account_for, resolve_password
 
-        assert resolve_password(ACCOUNT) == "typed-app-pw"
+        account = account_for("me@naver.com", alias="me-naver")
+        assert resolve_password(account) == "typed-app-pw"
+
+    def test_an_unsupported_domain_is_refused_before_prompting(
+        self, tmp_path, fake_smtp, monkeypatch, capsys
+    ):
+        prompted = False
+
+        def spy(prompt: str = "") -> str:
+            nonlocal prompted
+            prompted = True
+            return "x"
+
+        monkeypatch.setattr("getpass.getpass", spy)
+        config = tmp_path / "config.toml"
+        code = main(["set-password", "me@hanmail.net", "--config", str(config)])
+        assert code == 1
+        assert not prompted  # rejected before asking for a secret
+        assert not config.exists()  # and nothing written
+        assert "unsupported email domain" in capsys.readouterr().err
+
+    def test_a_closed_stdin_is_a_one_line_error_not_a_traceback(
+        self, tmp_path, fake_smtp, monkeypatch, capsys
+    ):
+        # `set-password ... < /dev/null` (a non-interactive runner) makes getpass raise
+        # EOFError, outside main's catch tuple; it must become exit 1 + a message.
+        def raise_eof(prompt: str = "") -> str:
+            raise EOFError
+
+        monkeypatch.setattr("getpass.getpass", raise_eof)
+        config = tmp_path / "config.toml"
+        code = main(["set-password", "me@naver.com", "--config", str(config)])
+        assert code == 1
+        assert "stdin is not a terminal" in capsys.readouterr().err
+        assert not config.exists()  # a failed prompt writes no account
+
+
+class TestAddressBookCommands:
+    def test_add_contact_writes_an_alias(self, tmp_path, capsys):
+        config = tmp_path / "config.toml"
+        assert main(["add-contact", "lead", "lead@example.com",
+                     "--config", str(config)]) == 0
+        assert 'lead = "lead@example.com"' in config.read_text(encoding="utf-8")
+
+    def test_add_group_writes_members(self, tmp_path, capsys):
+        config = tmp_path / "config.toml"
+        assert main(["add-group", "team", "me", "lead@example.com",
+                     "--config", str(config)]) == 0
+        assert 'team = ["me", "lead@example.com"]' in config.read_text(encoding="utf-8")
+
+    def test_add_contact_rejects_a_malformed_address(self, tmp_path, capsys):
+        config = tmp_path / "config.toml"
+        assert main(["add-contact", "lead", "not-an-email",
+                     "--config", str(config)]) == 1
+        assert "not a valid email" in capsys.readouterr().err
+
+    def test_import_contacts_writes_every_row(self, tmp_path, capsys):
+        config = tmp_path / "config.toml"
+        csv_path = tmp_path / "contacts.csv"
+        csv_path.write_text(
+            "name,email\nlead,lead@example.com\nmanager,manager@example.com\n",
+            encoding="utf-8",
+        )
+        code = main(["import-contacts", str(csv_path), "--config", str(config)])
+        assert code == 0
+        assert "imported 2 contacts" in capsys.readouterr().out
+        written = config.read_text(encoding="utf-8")
+        assert 'lead = "lead@example.com"' in written
+        assert 'manager = "manager@example.com"' in written
+
+    def test_import_contacts_reports_a_missing_column(self, tmp_path, capsys):
+        config = tmp_path / "config.toml"
+        csv_path = tmp_path / "contacts.csv"
+        csv_path.write_text("name\nlead\n", encoding="utf-8")
+        code = main(["import-contacts", str(csv_path), "--config", str(config)])
+        assert code == 1
+        assert "email" in capsys.readouterr().err
+        assert not config.exists()  # nothing written on a bad header
+
+    def test_import_contacts_is_all_or_nothing_on_a_bad_row(self, tmp_path, capsys):
+        config = tmp_path / "config.toml"
+        csv_path = tmp_path / "contacts.csv"
+        csv_path.write_text(
+            "name,email\nlead,lead@example.com\nmanager,not-an-email\n",
+            encoding="utf-8",
+        )
+        code = main(["import-contacts", str(csv_path), "--config", str(config)])
+        assert code == 1
+        assert "not a valid email" in capsys.readouterr().err
+        assert not config.exists()  # the good row is not written either
+
+    def test_import_contacts_skips_blank_rows_and_trims_cells(self, tmp_path, capsys):
+        config = tmp_path / "config.toml"
+        csv_path = tmp_path / "contacts.csv"
+        # a trailing blank line, and cells padded with spaces (a spreadsheet export)
+        csv_path.write_text(
+            "name,email\n  lead ,  lead@example.com  \n\nmanager,manager@example.com\n",
+            encoding="utf-8",
+        )
+        assert main(["import-contacts", str(csv_path), "--config", str(config)]) == 0
+        assert "imported 2 contacts" in capsys.readouterr().out
+        assert 'lead = "lead@example.com"' in config.read_text(encoding="utf-8")
+
+    def test_import_contacts_accepts_a_utf8_bom(self, tmp_path, capsys):
+        config = tmp_path / "config.toml"
+        csv_path = tmp_path / "contacts.csv"
+        # a spreadsheet "UTF-8 CSV" export writes a BOM; the `name` header must survive
+        csv_path.write_text("name,email\nlead,lead@example.com\n", encoding="utf-8-sig")
+        assert main(["import-contacts", str(csv_path), "--config", str(config)]) == 0
+        assert 'lead = "lead@example.com"' in config.read_text(encoding="utf-8")
+
+    def test_import_contacts_with_only_a_header_is_refused(self, tmp_path, capsys):
+        config = tmp_path / "config.toml"
+        csv_path = tmp_path / "contacts.csv"
+        csv_path.write_text("name,email\n", encoding="utf-8")
+        code = main(["import-contacts", str(csv_path), "--config", str(config)])
+        assert code == 1
+        assert "no contacts to import" in capsys.readouterr().err
+        assert not config.exists()
 
 
 class TestUsage:

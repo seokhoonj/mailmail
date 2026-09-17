@@ -2,9 +2,9 @@
 
 The store itself -- the file location, 0600 mode, atomic write, whitespace stripping,
 and blank rejection -- is credbox's and tested there. These cover only what mailmail
-adds on top: resolving the environment before the file, keying the file by the
-account's username while the environment is keyed by the account name, and wrapping the
-store's failures in mailmail's own error type.
+adds on top: resolving the environment before the file, keying both by the account's
+handle (falling back to the address for a password stored before the key was the
+handle), and wrapping the store's failures in mailmail's own error type.
 """
 
 import os
@@ -17,8 +17,8 @@ from mailmail.credentials import delete_password, resolve_password, store_passwo
 from mailmail.errors import CredentialsError, MissingPasswordError
 from mailmail.provider import GMAIL, NAVER
 
-NAVER_ACCOUNT = SmtpAccount(name="naver", username="me@naver.com", provider=NAVER)
-GMAIL_ACCOUNT = SmtpAccount(name="gmail", username="me@gmail.com", provider=GMAIL)
+NAVER_ACCOUNT = SmtpAccount(email="me@naver.com", alias="naver", provider=NAVER)
+GMAIL_ACCOUNT = SmtpAccount(email="me@gmail.com", alias="gmail", provider=GMAIL)
 
 
 @pytest.fixture(autouse=True)
@@ -39,12 +39,21 @@ class TestStoreAndResolve:
         store_password(NAVER_ACCOUNT, "app-password")
         assert resolve_password(NAVER_ACCOUNT) == "app-password"
 
-    def test_the_store_is_keyed_by_username_not_by_account_name(self):
-        # Two accounts, one mailbox: a password stored under the first resolves for the
-        # second, proving the store key is the username, not the account name.
-        store_password(NAVER_ACCOUNT, "app-password")
-        alias = SmtpAccount(name="naver-alias", username="me@naver.com", provider=NAVER)
-        assert resolve_password(alias) == "app-password"
+    def test_the_store_is_keyed_by_the_handle(self):
+        # Two accounts share a mailbox but have different handles; a password stored
+        # under one does not resolve for the other, because the key is the handle.
+        store_password(NAVER_ACCOUNT, "app-password")  # handle "naver"
+        other = SmtpAccount(email="me@naver.com", alias="naver-alias", provider=NAVER)
+        with pytest.raises(MissingPasswordError):
+            resolve_password(other)
+
+    def test_a_password_stored_under_the_address_still_resolves(self):
+        # Read-compat: a password set before the key became the handle was filed under
+        # the address, so an aliased account falls back to the address to find it.
+        from credbox import Credentials
+
+        Credentials.for_app("mailmail").set("me@naver.com", value="legacy-password")
+        assert resolve_password(NAVER_ACCOUNT) == "legacy-password"
 
     def test_accounts_do_not_overwrite_each_other(self):
         store_password(NAVER_ACCOUNT, "naver-password")
@@ -84,7 +93,7 @@ class TestStoreAndResolve:
     def test_missing_password_names_the_account(self):
         with pytest.raises(MissingPasswordError) as caught:
             resolve_password(NAVER_ACCOUNT)
-        assert "me@naver.com" in str(caught.value)
+        assert "no password stored for naver" in str(caught.value)  # the handle
 
     def test_account_without_a_password_does_not_borrow_anothers(self):
         store_password(GMAIL_ACCOUNT, "gmail-password")
@@ -220,6 +229,6 @@ class TestTheEnvironmentPasswordKnowsWhichAccountItIsFor:
     def test_a_hyphen_in_the_account_name_folds_to_an_underscore(self, monkeypatch):
         # `[accounts.me-naver]` -> MAILMAIL_PASSWORD_ME_NAVER; a hyphen is not a legal
         # shell variable char, so folding it keeps the per-account guard reachable.
-        account = SmtpAccount(name="me-naver", username="me@naver.com", provider=NAVER)
+        account = SmtpAccount(email="me@naver.com", alias="me-naver", provider=NAVER)
         monkeypatch.setenv("MAILMAIL_PASSWORD_ME_NAVER", "the-folded-one")
         assert resolve_password(account) == "the-folded-one"
