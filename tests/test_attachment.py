@@ -107,7 +107,10 @@ class TestMimeGuessing:
         assert attachment.mime_type == expected_mime_type
 
     def test_unknown_suffix_falls_back_to_octet_stream(self, tmp_path):
-        attachment = Attachment.from_path(_write_file(tmp_path, "model.parquet"))
+        # mimetypes also reads the host's /etc/mime.types, so a real-world suffix
+        # can turn "known" when the OS image updates (Ubuntu 26.04 added .parquet).
+        # A made-up suffix stays unknown on every host.
+        attachment = Attachment.from_path(_write_file(tmp_path, "model.zzunknown"))
         assert attachment.mime_type == "application/octet-stream"
 
     def test_size_is_read_from_disk(self, tmp_path):
